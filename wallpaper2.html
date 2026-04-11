@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>流体时光壁纸</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { overflow: hidden; height: 100vh; width: 100vw; background: #000; }
+  canvas {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: #000;
+  }
+  #debugPanel {
+    display: none; position: fixed; top: 10px; right: 10px;
+    width: 280px; max-height: calc(100vh - 20px); overflow-y: auto;
+    background: rgba(15,15,25,0.92); backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;
+    padding: 14px; z-index: 1000; color: #ccc;
+    font-family: 'Segoe UI', system-ui, sans-serif; font-size: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  }
+  #debugPanel.open { display: block; }
+  #debugPanel h3 {
+    font-size: 13px; font-weight: 600; margin-bottom: 10px; color: #fff;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #debugPanel h3 span.close { cursor: pointer; opacity: 0.4; font-size: 15px; }
+  #debugPanel h3 span.close:hover { opacity: 1; }
+  .pg { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .pg:last-child { border-bottom: none; }
+  .pg label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; color: #999; font-size: 11px; }
+  .pg label .v { color: #7af; font-family: monospace; font-size: 10px; }
+  .pg input[type=range] {
+    width: 100%; height: 3px; appearance: none; -webkit-appearance: none;
+    background: rgba(255,255,255,0.08); border-radius: 2px; outline: none;
+  }
+  .pg select {
+    width: 100%;
+    height: 28px;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.06);
+    color: #ddd;
+    outline: none;
+    padding: 0 8px;
+  }
+  .pg input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 12px; height: 12px;
+    border-radius: 50%; background: #7af; cursor: pointer;
+  }
+  .td { text-align: center; font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 2px; }
+  .tn { text-align: center; font-size: 10px; color: #7af; margin-bottom: 6px; }
+  .tr { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
+  .tr input[type=checkbox] { accent-color: #7af; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="debugPanel">
+  <h3>🎛️ 调试 <span class="close" onclick="toggleDebug()">✕</span></h3>
+  <div class="pg">
+    <div class="td" id="simTimeDisplay">18:30</div>
+    <div class="tn" id="simThemeName">日落</div>
+    <label>模拟时间 <span class="v" id="timeVal">18.5h</span></label>
+    <input type="range" id="simTime" min="0" max="24" step="0.05" value="18.5">
+    <label>模拟月份 <span class="v" id="monthVal">6月</span></label>
+    <input type="range" id="simMonth" min="0" max="11" step="1" value="5">
+    <div style="margin-top:3px"><div class="tr"><span>使用实时时间</span><input type="checkbox" id="useRealTime"></div></div>
+  </div>
+  <div class="pg">
+    <label>模糊 <span class="v" id="blurVal">0.05px</span></label>
+    <input type="range" id="cssBlur" min="0" max="100" step="0.01" value="0">
+    <label style="margin-top:6px">流动速度 <span class="v" id="flowSpeedVal">5.0</span></label>
+    <input type="range" id="flowSpeed" min="0.1" max="5" step="0.1" value="5">
+    <label style="margin-top:6px">波浪幅度 <span class="v" id="waveAmpVal">0.7</span></label>
+    <input type="range" id="waveAmp" min="0" max="1" step="0.01" value="0.7">
+  </div>
+</div>
+<script>
+'use strict';
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H, animTime = 0;
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
+const PERF = IS_ANDROID
+  ? { targetFps: 24, dividerSteps: 42, blockCount: 10, blurScale: 0.45, defaultFlow: 3.2, defaultWave: 0.55 }
+  : { targetFps: 60, dividerSteps: 60, blockCount: 18, blurScale: 1.0, defaultFlow: 5, defaultWave: 0.7 };
+const FRAME_INTERVAL_MS = 1000 / PERF.targetFps;
+const debug = {
+  useRealTime: true,
+  simTime: 18.5,
+  simMonth: 5,
+  cssBlur: 0,
+  flowSpeed: PERF.defaultFlow,
+  waveAmp: PERF.defaultWave
+};
+const pointer = {
+  active: false, x: 0.5, y: 0.5, tx: 0.5, ty: 0.5,
+  vx: 0, vy: 0, ax: 0, ay: 0, speed: 0, accel: 0,
+  swirl: 0, drag: 0, push: 0
+};
+const fluidMotion = { phase: 0, velocity: 0.8, accel: 0 };
+const dividerMotion = { points: null };
+
+// ====== 外部调节 API ======
+// 1. URL 参数初始化：wallpaper2.html?flowSpeed=3&waveAmp=0.5&cssBlur=0
+(function initFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  if(params.has('flowSpeed')) debug.flowSpeed = clamp(parseFloat(params.get('flowSpeed')), 0.1, 5);
+  if(params.has('waveAmp')) debug.waveAmp = clamp(parseFloat(params.get('waveAmp')), 0, 1);
+  if(params.has('cssBlur')) debug.cssBlur = clamp(parseFloat(params.get('cssBlur')), 0, 100);
+  if(params.has('simTime')) { debug.simTime = parseFloat(params.get('simTime')); debug.useRealTime = false; }
+  if(params.has('simMonth')) { debug.simMonth = parseInt(params.get('simMonth')); debug.useRealTime = false; }
+})();
+
+// 2. postMessage 动态调节接口（支持 WebView/桌面应用实时控制）
+window.addEventListener('message', function(e) {
+  const data = e.data;
+  if(typeof data === 'object') {
+    if(typeof data.flowSpeed === 'number') debug.flowSpeed = clamp(data.flowSpeed, 0.1, 5);
+    if(typeof data.waveAmp === 'number') debug.waveAmp = clamp(data.waveAmp, 0, 1);
+    if(typeof data.cssBlur === 'number') {
+      debug.cssBlur = clamp(data.cssBlur, 0, 100);
+      canvas.style.filter = `blur(${debug.cssBlur}px)`;
+    }
+    if(typeof data.simTime === 'number') { debug.simTime = data.simTime; debug.useRealTime = false; }
+    if(typeof data.simMonth === 'number') { debug.simMonth = data.simMonth; debug.useRealTime = false; }
+    if(data.useRealTime !== undefined) debug.useRealTime = !!data.useRealTime;
+  }
+});
+
+// 3. 状态查询接口：调用 window.getWallpaperState() 返回当前参数
+window.getWallpaperState = function() {
+  return { flowSpeed: debug.flowSpeed, waveAmp: debug.waveAmp, cssBlur: debug.cssBlur, useRealTime: debug.useRealTime, simTime: debug.simTime, simMonth: debug.simMonth };
+};
+
+// 4. 全局设置接口：window.setWallpaperConfig({ flowSpeed: 3, waveAmp: 0.5 })
+window.setWallpaperConfig = function(cfg) {
+  if(typeof cfg === 'object') {
+    if(typeof cfg.flowSpeed === 'number') debug.flowSpeed = clamp(cfg.flowSpeed, 0.1, 5);
+    if(typeof cfg.waveAmp === 'number') debug.waveAmp = clamp(cfg.waveAmp, 0, 1);
+    if(typeof cfg.cssBlur === 'number') {
+      debug.cssBlur = clamp(cfg.cssBlur, 0, 100);
+      canvas.style.filter = `blur(${debug.cssBlur}px)`;
+    }
+    if(typeof cfg.simTime === 'number') { debug.simTime = cfg.simTime; debug.useRealTime = false; }
+    if(typeof cfg.simMonth === 'number') { debug.simMonth = cfg.simMonth; debug.useRealTime = false; }
+    if(cfg.useRealTime !== undefined) debug.useRealTime = !!cfg.useRealTime;
+  }
+};
+
+// 对象池：避免每帧创建新数组
+const pool = {
+  pointsA: null,
+  pointsB: null,
+  current: 0
+};
+function getPointsBuffer(count) {
+  if(!pool.pointsA || pool.pointsA.length < count) {
+    pool.pointsA = new Array(count);
+    for(let i = 0; i < count; i++) pool.pointsA[i] = { x: 0, y: 0 };
+  }
+  return pool.pointsA;
+}
+
+function getRenderScale() {
+  // 壁纸场景下可降低渲染分辨率以节省性能
+  return Math.min(1, Math.max(0.5, 1080 / Math.max(window.innerWidth, window.innerHeight)));
+}
+
+function resize() {
+  const scale = getRenderScale();
+  const newW = Math.round(window.innerWidth * scale);
+  const newH = Math.round(window.innerHeight * scale);
+  if(W !== newW || H !== newH) {
+    if(dividerMotion.points && dividerMotion.points.length > 0) {
+      const sx = newW / W;
+      const sy = newH / H;
+      for(let i = 0; i < dividerMotion.points.length; i++) {
+        dividerMotion.points[i].x *= sx;
+        dividerMotion.points[i].y *= sy;
+      }
+    }
+    W = newW;
+    H = newH;
+    canvas.width = W;
+    canvas.height = H;
+  }
+}
+resize();
+window.addEventListener('resize', resize, { passive: true });
+
+const themes = {
+  midnight: { name:'午夜', warm:[140,15,160], cool:[8,2,18], mid:[40,8,50] },
+  dawn:     { name:'黎明', warm:[240,110,130], cool:[25,50,110], mid:[130,80,130] },
+  sunrise:  { name:'日出', warm:[255,150,50], cool:[50,70,170], mid:[210,100,120] },
+  morning:  { name:'早晨', warm:[255,235,160], cool:[30,130,235], mid:[150,180,200] },
+  noon:     { name:'正午', warm:[255,255,190], cool:[5,110,245], mid:[130,180,220] },
+  afternoon:{ name:'下午', warm:[255,185,80], cool:[15,90,220], mid:[140,135,180] },
+  sunset:   { name:'日落', warm:[255,100,30], cool:[20,20,140], mid:[140,50,90] },
+  dusk:     { name:'黄昏', warm:[160,30,90], cool:[12,8,45], mid:[50,15,60] },
+  night:    { name:'夜晚', warm:[110,18,130], cool:[5,3,22], mid:[25,8,40] }
+};
+
+function getSeasonalOffset(m) { return Math.cos(((m - 5) / 12) * Math.PI * 2); }
+function getTimeBoundaries(month) {
+  const o = getSeasonalOffset(month);
+  return { midnightEnd:4, dawnEnd:5.5-o*1.5, sunriseEnd:7-o*1.5, morningEnd:11, noonEnd:14, afternoonEnd:17+o*1.5, sunsetEnd:18.5+o*1.5, duskEnd:Math.min(20+o*1.5,22) };
+}
+function getTheme(t, b) {
+  if(t<b.midnightEnd) return themes.midnight; if(t<b.dawnEnd) return themes.dawn;
+  if(t<b.sunriseEnd) return themes.sunrise; if(t<b.morningEnd) return themes.morning;
+  if(t<b.noonEnd) return themes.noon; if(t<b.afternoonEnd) return themes.afternoon;
+  if(t<b.sunsetEnd) return themes.sunset; if(t<b.duskEnd) return themes.dusk; return themes.night;
+}
+function getNextTheme(t, b) {
+  if(t<b.midnightEnd) return themes.dawn; if(t<b.dawnEnd) return themes.sunrise;
+  if(t<b.sunriseEnd) return themes.morning; if(t<b.morningEnd) return themes.noon;
+  if(t<b.noonEnd) return themes.afternoon; if(t<b.afternoonEnd) return themes.sunset;
+  if(t<b.sunsetEnd) return themes.dusk; if(t<b.duskEnd) return themes.night; return themes.midnight;
+}
+function getProgress(t, b) {
+  if(t<b.midnightEnd) return t/b.midnightEnd; if(t<b.dawnEnd) return (t-b.midnightEnd)/(b.dawnEnd-b.midnightEnd);
+  if(t<b.sunriseEnd) return (t-b.dawnEnd)/(b.sunriseEnd-b.dawnEnd); if(t<b.morningEnd) return (t-b.sunriseEnd)/(b.morningEnd-b.sunriseEnd);
+  if(t<b.noonEnd) return (t-b.morningEnd)/(b.noonEnd-b.morningEnd); if(t<b.afternoonEnd) return (t-b.noonEnd)/(b.afternoonEnd-b.noonEnd);
+  if(t<b.sunsetEnd) return (t-b.afternoonEnd)/(b.sunsetEnd-b.afternoonEnd); if(t<b.duskEnd) return (t-b.sunsetEnd)/(b.duskEnd-b.sunsetEnd);
+  return (t-b.duskEnd)/(24-b.duskEnd);
+}
+function lerp(a,b,t){return a+(b-a)*t;}
+function damp(current, target, lambda, dt) {
+  return lerp(current, target, 1 - Math.exp(-lambda * dt));
+}
+function lerpC(c1,c2,t){return [Math.round(lerp(c1[0],c2[0],t)),Math.round(lerp(c1[1],c2[1],t)),Math.round(lerp(c1[2],c2[2],t))];}
+function rgb(c){return `rgb(${c[0]},${c[1]},${c[2]})`;}
+function rgba(c,a){return `rgba(${c[0]},${c[1]},${c[2]},${a})`;}
+function clamp(v,min,max){return Math.max(min,Math.min(max,v));}
+function colorDistance(c1, c2) {
+  const dr = c1[0] - c2[0];
+  const dg = c1[1] - c2[1];
+  const db = c1[2] - c2[2];
+  return Math.sqrt(dr * dr + dg * dg + db * db);
+}
+function boostColor(c, amt=1.08, lift=0) {
+  return [
+    clamp(Math.round(c[0] * amt + lift), 0, 255),
+    clamp(Math.round(c[1] * amt + lift), 0, 255),
+    clamp(Math.round(c[2] * amt + lift), 0, 255)
+  ];
+}
+function smoothNoise(v) {
+  return Math.sin(v) * 0.6 + Math.sin(v * 1.93 + 1.7) * 0.28 + Math.sin(v * 3.71 + 4.2) * 0.12;
+}
+function smoothstep(a, b, x) {
+  const t = clamp((x - a) / (b - a), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+function smoothPoints(points, passes = 1, keepEnds = true) {
+  let out = points.map(p => ({ x: p.x, y: p.y }));
+  for(let pass = 0; pass < passes; pass++) {
+    const next = out.map((p, i) => {
+      if(keepEnds && (i === 0 || i === out.length - 1)) return { x: p.x, y: p.y };
+      const prev = out[Math.max(0, i - 1)];
+      const curr = out[i];
+      const following = out[Math.min(out.length - 1, i + 1)];
+      return {
+        x: prev.x * 0.24 + curr.x * 0.52 + following.x * 0.24,
+        y: prev.y * 0.24 + curr.y * 0.52 + following.y * 0.24
+      };
+    });
+    out = next;
+  }
+  return out;
+}
+function traceDivider(points) {
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for(let i=1;i<points.length-1;i++) {
+    const midX = (points[i].x + points[i+1].x) * 0.5;
+    const midY = (points[i].y + points[i+1].y) * 0.5;
+    ctx.quadraticCurveTo(points[i].x, points[i].y, midX, midY);
+  }
+  const last = points.length - 1;
+  ctx.quadraticCurveTo(points[last-1].x, points[last-1].y, points[last].x, points[last].y);
+}
+function clipWarmRegion(points, w, h) {
+  const m = Math.max(w, h) * 4;
+  traceDivider(points);
+  ctx.lineTo(w + m, h + m);
+  ctx.lineTo(w + m, -m);
+  ctx.closePath();
+}
+function clipCoolRegion(points, w, h) {
+  const m = Math.max(w, h) * 4;
+  ctx.beginPath();
+  ctx.moveTo(-m, -m);
+  ctx.lineTo(w + m, -m);
+  for(let i=points.length-1;i>=0;i--) ctx.lineTo(points[i].x, points[i].y);
+  ctx.lineTo(-m, h + m);
+  ctx.closePath();
+}
+
+// 完全不用 clipping，全屏渐变 + 超宽模糊 + 稳定随机色块扰动
+function drawSmoothTransition(points, warmColor, coolColor, midColor, w, h) {
+  const steps = points.length;
+  const diag = Math.max(w, h);
+  const phase = fluidMotion.phase;
+  
+  // 1. 稳定的随机色块打碎大面积纯色（用 flowPhase 种子保证每帧一致）
+  const blockCount = PERF.blockCount;
+  for(let i = 0; i < blockCount; i++) {
+    // 用种子生成稳定随机位置
+    const sx = smoothNoise(i * 3.7 + phase * 0.0004);
+    const sy = smoothNoise(i * 5.3 + phase * 0.00035 + 1);
+    const bx = sx * w * 1.2 - w * 0.1;
+    const by = sy * h * 1.2 - h * 0.1;
+    const sr = smoothNoise(i * 2.1 + 2);
+    const br = Math.abs(diag * (0.12 + sr * 0.22));
+
+    const colorMix = smoothNoise(i * 7.1 + 3);
+    let bc;
+    if(colorMix < 0.33) bc = lerpC(warmColor, midColor, smoothNoise(i * 1.3 + 4) * 0.5);
+    else if(colorMix < 0.66) bc = lerpC(midColor, warmColor, smoothNoise(i * 1.7 + 5) * 0.4);
+    else bc = lerpC(midColor, coolColor, smoothNoise(i * 2.3 + 6) * 0.4);
+    
+    const drift = 20;
+    const d1 = smoothNoise(i * 4.1 + 7);
+    const d2 = smoothNoise(i * 6.3 + 8);
+    const d3 = smoothNoise(i * 8.7 + 9);
+    bc = [
+      Math.min(255, Math.max(0, bc[0] + (d1 - 0.5) * drift)),
+      Math.min(255, Math.max(0, bc[1] + (d2 - 0.5) * drift)),
+      Math.min(255, Math.max(0, bc[2] + (d3 - 0.5) * drift))
+    ];
+    const bg = ctx.createRadialGradient(bx, by, 0, bx, by, br);
+    bg.addColorStop(0, rgba(bc, 0.3));
+    bg.addColorStop(1, rgba(bc, 0));
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, w, h);
+  }
+  
+  // 2. 基础渐变（过渡区宽）
+  const baseGrad = ctx.createLinearGradient(0, 0, w, h);
+  baseGrad.addColorStop(0, rgba(warmColor, 0.6));
+  baseGrad.addColorStop(0.35, rgba(warmColor, 0.25));
+  baseGrad.addColorStop(0.5, rgba(midColor, 0.55));
+  baseGrad.addColorStop(0.65, rgba(coolColor, 0.25));
+  baseGrad.addColorStop(1, rgba(coolColor, 0.6));
+  ctx.fillStyle = baseGrad;
+  ctx.fillRect(0, 0, w, h);
+  
+  // 3. 简化模糊线（从 5 层减到 2 层，固定 blur 值避免超大模糊）
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.globalCompositeOperation = 'source-over';
+  const blurMain = Math.max(24, Math.round(120 * PERF.blurScale));
+  const blurSide = Math.max(16, Math.round(80 * PERF.blurScale));
+
+  // 主模糊线（固定 120px blur 替代超大动态值）
+  ctx.filter = `blur(${blurMain}px)`;
+  ctx.strokeStyle = rgb(midColor);
+  ctx.lineWidth = diag * 5;
+  ctx.globalAlpha = 0.45;
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for(let i=1; i<steps-1; i++) {
+    const mx = (points[i].x + points[i+1].x) * 0.5;
+    const my = (points[i].y + points[i+1].y) * 0.5;
+    ctx.quadraticCurveTo(points[i].x, points[i].y, mx, my);
+  }
+  ctx.lineTo(points[steps-1].x, points[steps-1].y);
+  ctx.stroke();
+
+  // 暖色侧（固定 80px blur）
+  ctx.filter = `blur(${blurSide}px)`;
+  ctx.strokeStyle = rgb(lerpC(warmColor, midColor, 0.3));
+  ctx.lineWidth = diag * 3.5;
+  ctx.globalAlpha = 0.3;
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for(let i=1; i<steps-1; i++) {
+    const mx = (points[i].x + points[i+1].x) * 0.5;
+    const my = (points[i].y + points[i+1].y) * 0.5;
+    ctx.quadraticCurveTo(points[i].x, points[i].y, mx, my);
+  }
+  ctx.lineTo(points[steps-1].x, points[steps-1].y);
+  ctx.stroke();
+
+  // 冷色侧（复用上次 filter）
+  ctx.strokeStyle = rgb(lerpC(coolColor, midColor, 0.3));
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for(let i=1; i<steps-1; i++) {
+    const mx = (points[i].x + points[i+1].x) * 0.5;
+    const my = (points[i].y + points[i+1].y) * 0.5;
+    ctx.quadraticCurveTo(points[i].x, points[i].y, mx, my);
+  }
+  ctx.lineTo(points[steps-1].x, points[steps-1].y);
+  ctx.stroke();
+
+  ctx.restore();
+  ctx.filter = 'none';
+  ctx.globalAlpha = 1;
+}
+function drawDividerGlow(points, color, width, blur, alpha, offsetX=0, offsetY=0) {
+  ctx.save();
+  ctx.translate(offsetX, offsetY);
+  traceDivider(points);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.filter = `blur(${blur}px)`;
+  ctx.strokeStyle = rgba(color, alpha);
+  ctx.lineWidth = width;
+  ctx.stroke();
+  ctx.restore();
+}
+function drawDividerBands(points, bandLayers) {
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  for (const layer of bandLayers) {
+    // 限制 blur 最大值 40px，避免超大模糊
+    const b = Math.min(layer.blur, 40);
+    if(b > 0) ctx.filter = `blur(${b}px)`;
+    ctx.strokeStyle = rgba(layer.color, layer.alpha);
+    ctx.lineWidth = layer.width;
+    ctx.beginPath();
+    const first = points[0];
+    ctx.moveTo(first.x + layer.offsetX, first.y + layer.offsetY);
+    for (let i = 1; i < points.length - 1; i++) {
+      const px = points[i].x + layer.offsetX;
+      const py = points[i].y + layer.offsetY;
+      const nx = points[i + 1].x + layer.offsetX;
+      const ny = points[i + 1].y + layer.offsetY;
+      ctx.quadraticCurveTo(px, py, (px + nx) * 0.5, (py + ny) * 0.5);
+    }
+    const last = points.length - 1;
+    ctx.quadraticCurveTo(
+      points[last - 1].x + layer.offsetX,
+      points[last - 1].y + layer.offsetY,
+      points[last].x + layer.offsetX,
+      points[last].y + layer.offsetY
+    );
+    ctx.stroke();
+    if(layer.blur > 0) ctx.filter = 'none';
+  }
+  ctx.restore();
+}
+function drawCreamRibbon(points, baseWidth, colors, perpX, perpY) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  drawDividerBands(points, [
+    { color: colors.shadow, width: baseWidth * 2.9, blur: baseWidth * 0.28, alpha: 0.24, offsetX: 0, offsetY: 0 },
+    { color: colors.warm, width: baseWidth * 1.92, blur: baseWidth * 0.16, alpha: 0.4, offsetX: perpX * baseWidth * 0.18, offsetY: perpY * baseWidth * 0.18 },
+    { color: colors.cool, width: baseWidth * 1.96, blur: baseWidth * 0.16, alpha: 0.4, offsetX: -perpX * baseWidth * 0.18, offsetY: -perpY * baseWidth * 0.18 },
+    { color: colors.core, width: baseWidth * 1.44, blur: baseWidth * 0.08, alpha: 0.78, offsetX: 0, offsetY: 0 },
+    { color: colors.highlight, width: baseWidth * 0.54, blur: baseWidth * 0.03, alpha: 0.24, offsetX: perpX * baseWidth * 0.03, offsetY: perpY * baseWidth * 0.03 }
+  ]);
+  ctx.restore();
+}
+function stabilizeDivider(points, dt) {
+  if(!dividerMotion.points || dividerMotion.points.length !== points.length) {
+    dividerMotion.points = points.map(p => ({ x: p.x, y: p.y }));
+    return dividerMotion.points;
+  }
+  const lambda = 22;
+  for(let i = 0; i < points.length; i++) {
+    dividerMotion.points[i].x = damp(dividerMotion.points[i].x, points[i].x, lambda, dt);
+    dividerMotion.points[i].y = damp(dividerMotion.points[i].y, points[i].y, lambda, dt);
+  }
+  return dividerMotion.points;
+}
+function drawAdaptiveVariation(opts) {
+  const {
+    w, h, diagLen, flowPhase, baseAngle, softness, dividerPts,
+    warmFace, warmSoft, coolFace, coolSoft, seamTone
+  } = opts;
+  const contrast = (colorDistance(warmFace, coolFace) + colorDistance(warmSoft, coolSoft)) / 2;
+  const contrastNeed = 1 - clamp((contrast - 72) / 176, 0, 1);
+  const strength = clamp(0.12 + contrastNeed * 0.22, 0.12, 0.30);
+  const count = Math.round(3 + contrastNeed * 2);
+  const driftBase = flowPhase * 0.0025;
+
+  // 简化云场：减少到 5 个渐变，不用 clip
+  ctx.save();
+  ctx.globalCompositeOperation = 'soft-light';
+  for(let side = 0; side < 2; side++) {
+    const baseColor = side === 0 ? warmFace : coolFace;
+    for(let i = 0; i < count; i++) {
+      const t = i / Math.max(1, count - 1);
+      const radius = diagLen * (0.18 + t * 0.12);
+      const axial = (t - 0.5) * diagLen * 0.9;
+      const lateral = smoothNoise(i * 3.1 + driftBase * 7.3 + side * 2.4) * diagLen * 0.1;
+      const cx = w * 0.5 + Math.cos(baseAngle) * axial + Math.cos(baseAngle + Math.PI * 0.5) * lateral;
+      const cy = h * 0.5 + Math.sin(baseAngle) * axial + Math.sin(baseAngle + Math.PI * 0.5) * lateral;
+      const cloudColor = lerpC(baseColor, seamTone, 0.3 + t * 0.2);
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+      g.addColorStop(0, rgba(cloudColor, strength * 0.2));
+      g.addColorStop(1, rgba(cloudColor, 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    }
+  }
+  ctx.restore();
+}
+
+function getCurrentColors() {
+  let t, month;
+  if(debug.useRealTime){ const n=new Date(); t=n.getHours()+n.getMinutes()/60; month=n.getMonth(); }
+  else { t=debug.simTime; month=debug.simMonth; }
+  const b=getTimeBoundaries(month), cur=getTheme(t,b), nxt=getNextTheme(t,b), p=getProgress(t,b), tr=8/60;
+  if(p>1-tr){ const st=Math.pow((p-(1-tr))/tr,2)*(3-2*(p-(1-tr))/tr); return { warm:lerpC(cur.warm,nxt.warm,st), cool:lerpC(cur.cool,nxt.cool,st), mid:lerpC(cur.mid,nxt.mid,st), isNight:cur===themes.night||cur===themes.midnight||cur===themes.dusk }; }
+  return { warm:cur.warm, cool:cur.cool, mid:cur.mid, isNight:cur===themes.night||cur===themes.midnight||cur===themes.dusk };
+}
+
+// Android live wallpaper service polls this value and maps it to WallpaperColors.
+window.__wallpaperDynamicPalette = function() {
+  const c = getCurrentColors();
+  if(!c || !c.warm || !c.mid || !c.cool) {
+    return '';
+  }
+  return [c.warm.join(','), c.mid.join(','), c.cool.join(',')].join('|');
+};
+
+// ====== 核心渲染：两大色域 + 波浪分界 ======
+function drawFluid(colors, dt) {
+  const w=W, h=H;
+  const flowPhase = fluidMotion.phase;
+  const waveAmp = 0.038 + debug.waveAmp * 0.048;
+  const softness = clamp(debug.cssBlur / 40, 0, 1);
+  const stickInfluence = pointer.active ? 0.9 : 0.7;
+  const mouseX = pointer.x * w;
+  const mouseY = pointer.y * h;
+  const isNight = colors.isNight;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // 夜间模式：紫色+黑色条纹，日间模式：正常暖冷对比
+  let warmFace, warmSoft, coolFace, coolSoft, blendCore, bridgeCore, seamWarm, seamTone, seamCool, seamHighlight, seamShadow;
+  
+  if(isNight) {
+    // 夜间模式：深紫+纯黑条纹
+    warmFace = lerpC(colors.warm, [100, 15, 130], 0.25);
+    warmSoft = lerpC(colors.warm, colors.mid, 0.30);
+    coolFace = lerpC(colors.cool, [5, 2, 12], 0.60);
+    coolSoft = lerpC(colors.cool, colors.mid, 0.35);
+    blendCore = lerpC(colors.mid, [50, 8, 65], 0.50);
+    bridgeCore = boostColor(blendCore, 1.05, 2);
+    seamWarm = lerpC(warmSoft, [120, 20, 140], 0.40);
+    seamTone = lerpC(colors.mid, [60, 10, 75], 0.55);
+    seamCool = lerpC(coolSoft, [15, 3, 25], 0.60);
+    seamHighlight = lerpC(seamTone, warmFace, 0.20);
+    seamShadow = lerpC(seamCool, coolFace, 0.50);
+  } else {
+    // 日间模式：暖冷对比
+    warmFace = lerpC(colors.warm, [255, 220, 180], 0.15);
+    warmSoft = lerpC(colors.warm, colors.mid, 0.15);
+    coolFace = lerpC(colors.cool, [50, 120, 230], 0.35);
+    coolSoft = lerpC(colors.cool, colors.mid, 0.22);
+    blendCore = lerpC(colors.mid, lerpC(warmFace, coolSoft, 0.5), 0.30);
+    bridgeCore = boostColor(blendCore, 1.08, 4);
+    seamWarm = lerpC(warmSoft, bridgeCore, 0.50);
+    seamTone = lerpC(colors.mid, bridgeCore, 0.35);
+    seamCool = lerpC(coolSoft, bridgeCore, 0.48);
+    seamHighlight = lerpC(seamTone, warmFace, 0.15);
+    seamShadow = lerpC(seamCool, coolFace, 0.40);
+  }
+
+  // 主方向缓慢随机漂移，避免长期固定在单一对角线
+  const baseAngle = Math.PI * (
+    0.25 +
+    smoothNoise(flowPhase * 0.008 + 2.1) * 0.42 +
+    smoothNoise(flowPhase * 0.003 + 6.8) * 0.33
+  );
+  const dirX = Math.cos(baseAngle), dirY = Math.sin(baseAngle);
+  const perpX = -dirY, perpY = dirX;
+  const cx = w*0.5 + smoothNoise(flowPhase * 0.002 + 4.5) * w * 0.18;
+  const cy = h*0.5 + smoothNoise(flowPhase * 0.0025 + 8.2) * h * 0.18;
+  const diagLen = Math.sqrt(w*w + h*h);
+  const steps = PERF.dividerSteps;
+
+  // 生成分界点
+  const pts = [];
+  for(let i=0; i<=steps; i++) {
+    const s = i/steps;
+    const localAngle = baseAngle
+      + smoothNoise(s * 2.7 + flowPhase * 0.007 + 1.5) * 0.32
+      + smoothNoise(s * 6.1 + flowPhase * 0.0035 + 5.2) * 0.18
+      + smoothNoise(s * 12.4 + 2.8) * 0.07;
+    const localDirX = Math.cos(localAngle), localDirY = Math.sin(localAngle);
+    const localPerpX = -localDirY, localPerpY = localDirX;
+    const sweep = (s - 0.5) * diagLen * 1.85;
+    const sideDrift = (
+      smoothNoise(s * 2.4 + flowPhase * 0.005 + 9.3) * 0.07 +
+      smoothNoise(s * 5.8 + 4.9) * 0.045 +
+      Math.sin((s - 0.12) * Math.PI * 1.35) * 0.03
+    ) * diagLen;
+    const bx = cx + localDirX * sweep + localPerpX * sideDrift;
+    const by = cy + localDirY * sweep + localPerpY * sideDrift;
+    const centerBulge = Math.pow(Math.sin(s * Math.PI), 0.82);
+    const broadWave = Math.sin(s * 0.92 * Math.PI + flowPhase * 0.05 + 0.2) * 0.38;
+    const randomWave = smoothNoise(s * 7.2 + flowPhase * 0.016 + 0.7) * 0.42;
+    const fineWave = smoothNoise(s * 18.5 + flowPhase * 0.009 + 2.1) * 0.16;
+    const creamLobes =
+      Math.exp(-Math.pow((s - 0.16) / 0.09, 2)) * 0.24 +
+      Math.exp(-Math.pow((s - 0.36) / 0.11, 2)) * -0.18 +
+      Math.exp(-Math.pow((s - 0.58) / 0.12, 2)) * 0.28 +
+      Math.exp(-Math.pow((s - 0.78) / 0.09, 2)) * -0.22;
+    const wave = (broadWave + randomWave + fineWave + creamLobes) * centerBulge;
+    const drift = (
+      smoothNoise(s * 3.9 + 11.4) * 0.08 +
+      smoothNoise(s * 10.8 + 6.2) * 0.05
+    ) * waveAmp * diagLen;
+    const dx = bx - mouseX;
+    const dy = by - mouseY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const influence = Math.pow(smoothstep(diagLen * 0.32, 0, dist), 1.5) * stickInfluence;
+    const swirlDir = pointer.vx * dy - pointer.vy * dx;
+    const smear = influence * pointer.swirl * centerBulge * diagLen * 0.05;
+    const stirWave = (
+      smoothNoise(s * 4.2 + flowPhase * 0.005 + 4.6) * 0.75 +
+      Math.sin(s * Math.PI * 2.3 + flowPhase * 0.0025 + 0.8) * 0.25
+    );
+    const stirPush = influence * pointer.drag * centerBulge * stirWave * diagLen * 0.014;
+    const localOffset = wave * waveAmp * diagLen + drift + smear * Math.sign(swirlDir || 1) + stirPush;
+    const tangentShift = influence * pointer.push * centerBulge * diagLen * 0.015;
+    pts.push({
+      x: bx + localPerpX * localOffset + localDirX * tangentShift,
+      y: by + localPerpY * localOffset + localDirY * tangentShift
+    });
+  }
+  const dividerPts = stabilizeDivider(smoothPoints(pts, 3, true), dt);
+
+  // 背景渐变 - 多层叠加
+  const bg = ctx.createLinearGradient(0, 0, w, h);
+  bg.addColorStop(0, rgb(warmFace));
+  bg.addColorStop(0.38, rgb(seamWarm));
+  bg.addColorStop(0.53, rgb(seamTone));
+  bg.addColorStop(0.69, rgb(seamCool));
+  bg.addColorStop(1, rgb(coolSoft));
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
+  
+  // 背景径向光晕
+  if(isNight) {
+    // 夜间：紫色光晕
+    const bgRadial = ctx.createRadialGradient(w*0.4, h*0.6, 0, w*0.4, h*0.6, Math.max(w, h)*0.5);
+    bgRadial.addColorStop(0, rgba([80, 10, 90], 0.15));
+    bgRadial.addColorStop(0.5, rgba(seamTone, 0.08));
+    bgRadial.addColorStop(1, rgba(coolSoft, 0));
+    ctx.fillStyle = bgRadial;
+    ctx.fillRect(0, 0, w, h);
+  } else {
+    const bgRadial = ctx.createRadialGradient(w*0.4, h*0.6, 0, w*0.4, h*0.6, Math.max(w, h)*0.5);
+    bgRadial.addColorStop(0, rgba(lerpC(warmFace, [255,245,230], 0.2), 0.15));
+    bgRadial.addColorStop(0.5, rgba(seamTone, 0.08));
+    bgRadial.addColorStop(1, rgba(coolSoft, 0));
+    ctx.fillStyle = bgRadial;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  // 暖色/紫色光晕层
+  const warmGlow = ctx.createRadialGradient(w*0.18, h*0.2, 0, w*0.18, h*0.2, Math.max(w, h)*0.55);
+  if(isNight) {
+    warmGlow.addColorStop(0, rgba([100, 15, 130], 0.18));
+    warmGlow.addColorStop(0.46, rgba(warmSoft, 0.12));
+    warmGlow.addColorStop(1, rgba(warmSoft, 0));
+  } else {
+    warmGlow.addColorStop(0, rgba(lerpC(warmFace, [255,248,235], 0.15), 0.24));
+    warmGlow.addColorStop(0.46, rgba(warmSoft, 0.16));
+    warmGlow.addColorStop(1, rgba(warmSoft, 0));
+  }
+  ctx.fillStyle = warmGlow;
+  ctx.fillRect(0, 0, w, h);
+
+  // 冷色/深色深度层
+  const coolDepth = ctx.createRadialGradient(w*0.82, h*0.24, 0, w*0.82, h*0.24, Math.max(w, h)*0.55);
+  if(isNight) {
+    coolDepth.addColorStop(0, rgba([20, 5, 30], 0.35));
+    coolDepth.addColorStop(0.48, rgba(coolFace, 0.25));
+    coolDepth.addColorStop(1, rgba(coolFace, 0));
+  } else {
+    coolDepth.addColorStop(0, rgba(lerpC(coolSoft, [60,100,210], 0.1), 0.28));
+    coolDepth.addColorStop(0.48, rgba(coolFace, 0.2));
+    coolDepth.addColorStop(1, rgba(coolFace, 0));
+  }
+  ctx.fillStyle = coolDepth;
+  ctx.fillRect(0, 0, w, h);
+
+  // === 平滑过渡两大色域 ===
+  drawSmoothTransition(dividerPts, warmFace, coolFace, seamTone, w, h);
+
+  // 过渡混色带
+  const band = diagLen * (0.15 + softness * 0.09);
+  drawDividerBands(dividerPts, [
+    { color: seamTone, width: band * 2.5, blur: 12, alpha: 0.4, offsetX: 0, offsetY: 0 },
+    { color: seamWarm, width: band * 1.8, blur: 10, alpha: 0.3, offsetX: perpX * band * 0.1, offsetY: perpY * band * 0.1 },
+    { color: seamCool, width: band * 1.8, blur: 10, alpha: 0.3, offsetX: -perpX * band * 0.1, offsetY: -perpY * band * 0.1 }
+  ]);
+
+  // 自适应细节
+  drawAdaptiveVariation({
+    w, h, diagLen, flowPhase, baseAngle, softness, dividerPts,
+    warmFace, warmSoft, coolFace, coolSoft, seamTone
+  });
+}
+
+// ====== 调试面板 ======
+const panel = document.getElementById('debugPanel');
+let debugOpen = false;
+function toggleDebug() { debugOpen=!debugOpen; panel.classList.toggle('open', debugOpen); }
+document.addEventListener('keydown', e => {
+  if(e.ctrlKey && ['o','O','p','P','u','U','i','I'].includes(e.key)) { e.preventDefault(); toggleDebug(); }
+});
+const $ = id => document.getElementById(id);
+
+function updateTimeDisplay() {
+  const h=Math.floor(debug.simTime), m=Math.floor((debug.simTime-h)*60);
+  $('simTimeDisplay').textContent = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+  $('timeVal').textContent = debug.simTime.toFixed(2)+'h';
+  $('simThemeName').textContent = getTheme(debug.simTime, getTimeBoundaries(debug.simMonth)).name;
+}
+function updateMonthDisplay() {
+  const months=['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  $('monthVal').textContent = months[debug.simMonth];
+}
+function bindControls() {
+  const el = $('simTime');
+  if(!el) { setTimeout(bindControls,100); return; }
+  el.oninput = function() { debug.useRealTime=false; $('useRealTime').checked=false; debug.simTime=parseFloat(this.value); updateTimeDisplay(); };
+  $('simMonth').oninput = function() { debug.useRealTime=false; $('useRealTime').checked=false; debug.simMonth=parseInt(this.value); updateMonthDisplay(); updateTimeDisplay(); };
+  $('useRealTime').onchange = function() { debug.useRealTime=this.checked; };
+  $('cssBlur').oninput = function() {
+    debug.cssBlur=parseFloat(this.value);
+    $('blurVal').textContent=debug.cssBlur.toFixed(2)+'px';
+    // 直接修改 CSS filter，不触发 resize，避免黑屏
+    canvas.style.filter = `blur(${debug.cssBlur}px)`;
+  };
+  $('flowSpeed').oninput = function() { debug.flowSpeed=parseFloat(this.value); $('flowSpeedVal').textContent=debug.flowSpeed.toFixed(1); };
+  $('waveAmp').oninput = function() { debug.waveAmp=parseFloat(this.value); $('waveAmpVal').textContent=debug.waveAmp.toFixed(2); };
+}
+
+function initPanel() {
+  updateTimeDisplay(); updateMonthDisplay();
+  $('simTime').value=debug.simTime; $('simMonth').value=debug.simMonth;
+  $('blurVal').textContent=debug.cssBlur.toFixed(2)+'px';
+  $('cssBlur').value=debug.cssBlur;
+  $('flowSpeed').value=debug.flowSpeed;
+  $('flowSpeedVal').textContent=debug.flowSpeed.toFixed(1);
+  $('waveAmp').value=debug.waveAmp;
+  $('waveAmpVal').textContent=debug.waveAmp.toFixed(2);
+  canvas.style.filter=`blur(${debug.cssBlur}px)`;
+  $('useRealTime').checked=debug.useRealTime;
+  bindControls();
+}
+initPanel();
+
+let lastTs=0;
+let lastFrameTs=0;
+function render(ts) {
+  if (ts - lastFrameTs < FRAME_INTERVAL_MS) {
+    requestAnimationFrame(render);
+    return;
+  }
+  lastFrameTs = ts;
+  const rawDt = lastTs ? (ts-lastTs)/16.67 : 1;
+  const dt = clamp(rawDt, 0.75, 1.25);
+  lastTs = ts;
+  pointer.active = false;
+  pointer.vx = 0;
+  pointer.vy = 0;
+  pointer.ax = 0;
+  pointer.ay = 0;
+  pointer.speed = 0;
+  pointer.accel = 0;
+  pointer.swirl = 0;
+  pointer.drag = 0;
+  pointer.push = 0;
+  const baseSpeed = debug.flowSpeed * 1.0;
+  const targetVelocity = baseSpeed + smoothNoise(animTime * 0.0026 + 1.7) * 0.09 + smoothNoise(animTime * 0.0009 + 7.2) * 0.05;
+  const targetAccel = (targetVelocity - fluidMotion.velocity) * 0.018;
+  fluidMotion.accel = lerp(fluidMotion.accel, targetAccel, 0.028);
+  fluidMotion.velocity = clamp(fluidMotion.velocity + fluidMotion.accel * dt, 0.18, 3.2);
+  fluidMotion.phase += fluidMotion.velocity * dt;
+  animTime += dt;
+  drawFluid(getCurrentColors(), dt);
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

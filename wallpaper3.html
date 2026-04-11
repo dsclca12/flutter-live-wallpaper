@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>晨曦流光</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{overflow:hidden;height:100vh;width:100vw;background:#000}
+  canvas{position:fixed;top:0;left:0;width:100%;height:100%;background:#000}
+  #debugPanel{display:none;position:fixed;top:10px;right:10px;width:280px;max-height:calc(100vh - 20px);overflow-y:auto;background:rgba(15,15,25,.92);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;z-index:1000;color:#ccc;font-family:'Segoe UI',system-ui,sans-serif;font-size:12px;box-shadow:0 8px 32px rgba(0,0,0,.6)}
+  #debugPanel.open{display:block}
+  #debugPanel h3{font-size:13px;font-weight:600;margin-bottom:10px;color:#fff;display:flex;justify-content:space-between;align-items:center}
+  #debugPanel h3 span.close{cursor:pointer;opacity:.4;font-size:15px}
+  #debugPanel h3 span.close:hover{opacity:1}
+  .pg{margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.05)}
+  .pg:last-child{border-bottom:none}
+  .pg label{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;color:#999;font-size:11px}
+  .pg label .v{color:#7af;font-family:monospace;font-size:10px}
+  .pg input[type=range]{width:100%;height:3px;appearance:none;-webkit-appearance:none;background:rgba(255,255,255,.08);border-radius:2px;outline:none}
+  .pg input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:#7af;cursor:pointer}
+  .td{text-align:center;font-size:18px;font-weight:700;color:#fff;margin-bottom:2px}
+  .tn{text-align:center;font-size:10px;color:#7af;margin-bottom:6px}
+  .tr{display:flex;justify-content:space-between;align-items:center;padding:3px 0}
+  .tr input[type=checkbox]{accent-color:#7af}
+  .preset-btn{display:block;width:100%;padding:8px;margin-bottom:6px;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:rgba(255,255,255,.06);color:#ddd;font-size:11px;cursor:pointer;text-align:center;transition:all .2s}
+  .preset-btn:hover{background:rgba(120,160,255,.2);border-color:rgba(120,160,255,.3)}
+  .preset-btn.active{background:rgba(120,160,255,.25);border-color:rgba(120,160,255,.5);color:#7af}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="debugPanel">
+  <h3>🎛️ 调试 <span class="close" onclick="toggleDebug()">✕</span></h3>
+  <div class="pg">
+    <div class="td" id="simTimeDisplay">06:00</div>
+    <div class="tn" id="simThemeName">黎明</div>
+    <label>模拟时间 <span class="v" id="timeVal">6.0h</span></label>
+    <input type="range" id="simTime" min="0" max="24" step="0.05" value="6">
+    <label>模拟月份 <span class="v" id="monthVal">6月</span></label>
+    <input type="range" id="simMonth" min="0" max="11" step="1" value="5">
+    <div style="margin-top:3px"><div class="tr"><span>使用实时时间</span><input type="checkbox" id="useRealTime" checked></div></div>
+  </div>
+  <div class="pg">
+    <label>流动速度 <span class="v" id="flowSpeedVal">3.0</span></label>
+    <input type="range" id="flowSpeed" min="0.1" max="5" step="0.1" value="3">
+    <label>波浪幅度 <span class="v" id="waveAmpVal">0.6</span></label>
+    <input type="range" id="waveAmp" min="0" max="1" step="0.01" value="0.6">
+    <label>粒子数量 <span class="v" id="particleVal">30</span></label>
+    <input type="range" id="particleCount" min="20" max="150" step="1" value="30">
+  </div>
+  <div class="pg">
+    <label style="color:#7af;font-weight:600">⚡ 性能模式</label>
+    <button class="preset-btn" onclick="setPerformance('quality')">🎨 高质量 (60fps, 全分辨率)</button>
+    <button class="preset-btn" onclick="setPerformance('balanced')">⚖️ 均衡 (30fps, 全分辨率)</button>
+    <button class="preset-btn" onclick="setPerformance('power')">🔋 省电 (15fps, 半分辨率, 无粒子)</button>
+    <button class="preset-btn" onclick="setPerformance('minimal')">🪶 极低 (5fps, 1/4分辨率, 仅变色)</button>
+    <label style="margin-top:6px">目标帧率 <span class="v" id="fpsVal">30fps</span></label>
+    <input type="range" id="targetFps" min="1" max="60" step="1" value="30">
+    <label style="margin-top:6px">渲染分辨率 <span class="v" id="resVal">100%</span></label>
+    <input type="range" id="renderScale" min="25" max="100" step="5" value="100">
+    <div style="margin-top:3px"><div class="tr"><span>启用动态效果</span><input type="checkbox" id="enableAnim" checked></div></div>
+    <div style="margin-top:3px"><div class="tr"><span>启用粒子</span><input type="checkbox" id="enableParticles" checked></div></div>
+  </div>
+</div>
+<script>
+'use strict';
+
+// ====== 配置 ======
+const config = {
+  useRealTime: true,
+  simTime: 6,
+  simMonth: 5,
+  flowSpeed: 3,
+  waveAmp: 0.6,
+  particleCount: 30,
+  // 性能控制
+  targetFps: 30,
+  renderScale: 1.0,
+  enableAnim: true,
+  enableParticles: true
+};
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d', { alpha: false });
+
+let W = 0, H = 0, animTime = 0;
+let lastTs = 0;
+let lastFrameTime = 0;
+
+// 粒子系统
+const particles = [];
+function initParticles(count) {
+  particles.length = 0;
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x: Math.random(),
+      y: Math.random(),
+      vx: (Math.random() - 0.5) * 0.0002,
+      vy: (Math.random() - 0.5) * 0.0002,
+      size: Math.random() * 3 + 1,
+      alpha: Math.random() * 0.5 + 0.1,
+      phase: Math.random() * Math.PI * 2,
+      speed: Math.random() * 0.5 + 0.5
+    });
+  }
+}
+
+// ====== 工具函数 ======
+function lerp(a, b, t) { return a + (b - a) * t; }
+function lerpC(c1, c2, t) {
+  return [
+    Math.round(lerp(c1[0], c2[0], t)),
+    Math.round(lerp(c1[1], c2[1], t)),
+    Math.round(lerp(c1[2], c2[2], t))
+  ];
+}
+function clamp(v, min, max) { return v < min ? min : v > max ? max : v; }
+function rgb(c) { return `rgb(${c[0]},${c[1]},${c[2]})`; }
+function rgba(c, a) { return `rgba(${c[0]},${c[1]},${c[2]},${a})`; }
+function smoothNoise(v) {
+  return Math.sin(v) * 0.6 + Math.sin(v * 1.93 + 1.7) * 0.28 + Math.sin(v * 3.71 + 4.2) * 0.12;
+}
+function smoothstep(a, b, x) {
+  const t = clamp((x - a) / (b - a), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+// ====== 日出日落时间线 ======
+const phases = [
+  { time: 0,   name: '午夜', top:[8,3,18],      mid:[12,5,25],      bottom:[15,8,35] },
+  { time: 4,   name: '凌晨', top:[12,5,22],      mid:[18,8,30],      bottom:[25,12,45] },
+  { time: 5.5, name: '破晓', top:[40,15,60],     mid:[80,30,70],     bottom:[180,80,90] },
+  { time: 6.5, name: '黎明', top:[80,40,100],    mid:[200,100,100],  bottom:[255,150,80] },
+  { time: 7.5, name: '晨曦', top:[100,80,160],   mid:[255,160,100],  bottom:[255,200,120] },
+  { time: 9,   name: '上午', top:[60,120,200],   mid:[140,190,240],  bottom:[200,220,250] },
+  { time: 12,  name: '正午', top:[40,130,220],   mid:[100,180,250],  bottom:[180,210,255] },
+  { time: 15,  name: '午后', top:[50,110,200],   mid:[130,170,230],  bottom:[200,190,220] },
+  { time: 17,  name: '下午', top:[70,80,160],    mid:[180,120,150],  bottom:[240,140,100] },
+  { time: 18.5,name: '日落', top:[100,40,100],   mid:[240,100,80],   bottom:[255,140,60] },
+  { time: 19.5,name: '余晖', top:[60,25,80],     mid:[160,60,90],    bottom:[200,90,80] },
+  { time: 21,  name: '黄昏', top:[25,12,50],     mid:[40,18,65],     bottom:[60,25,80] },
+  { time: 24,  name: '午夜', top:[8,3,18],       mid:[12,5,25],      bottom:[15,8,35] }
+];
+
+function getColorsAtTime(t) {
+  let p0 = phases[0], p1 = phases[1];
+  for (let i = 0; i < phases.length - 1; i++) {
+    if (t >= phases[i].time && t <= phases[i + 1].time) {
+      p0 = phases[i];
+      p1 = phases[i + 1];
+      break;
+    }
+  }
+  const dur = p1.time - p0.time;
+  const prog = dur > 0 ? (t - p0.time) / dur : 0;
+  const smooth = prog * prog * (3 - 2 * prog);
+  return {
+    top: lerpC(p0.top, p1.top, smooth),
+    mid: lerpC(p0.mid, p1.mid, smooth),
+    bottom: lerpC(p0.bottom, p1.bottom, smooth),
+    name: prog < 0.5 ? p0.name : p1.name,
+    isNight: t < 5 || t > 20
+  };
+}
+
+// ====== 安卓动态取色（省电：按时间段返回固定色板） ======
+const dynamicPaletteTimeline = [
+  { start: 0, end: 5, primary: [28, 22, 54], secondary: [54, 48, 88], tertiary: [98, 90, 140] },
+  { start: 5, end: 7, primary: [122, 66, 92], secondary: [184, 110, 96], tertiary: [236, 164, 110] },
+  { start: 7, end: 10, primary: [86, 128, 206], secondary: [140, 184, 236], tertiary: [208, 226, 248] },
+  { start: 10, end: 16, primary: [72, 146, 224], secondary: [118, 182, 245], tertiary: [176, 214, 255] },
+  { start: 16, end: 19, primary: [136, 96, 162], secondary: [214, 124, 126], tertiary: [248, 162, 104] },
+  { start: 19, end: 22, primary: [74, 44, 106], secondary: [122, 72, 136], tertiary: [172, 106, 124] },
+  { start: 22, end: 24, primary: [34, 26, 60], secondary: [62, 52, 96], tertiary: [108, 96, 146] }
+];
+
+function getDynamicPaletteAtTime(t) {
+  const hour = ((t % 24) + 24) % 24;
+  for (const slot of dynamicPaletteTimeline) {
+    if (hour >= slot.start && hour < slot.end) return slot;
+  }
+  return dynamicPaletteTimeline[0];
+}
+
+// Android HtmlWallpaperService 优先读取该函数，格式必须是 "r,g,b|r,g,b|r,g,b"
+window.__wallpaperDynamicPalette = function() {
+  const palette = getDynamicPaletteAtTime(getCurrentTime());
+  return [
+    palette.primary.join(','),
+    palette.secondary.join(','),
+    palette.tertiary.join(',')
+  ].join('|');
+};
+
+// ====== 渲染 ======
+// 噪点纹理（预生成，避免每帧计算）
+const noiseCanvas = document.createElement('canvas');
+const noiseCtx = noiseCanvas.getContext('2d');
+const NOISE_SIZE = 64;
+noiseCanvas.width = NOISE_SIZE;
+noiseCanvas.height = NOISE_SIZE;
+(function generateNoise() {
+  const imgData = noiseCtx.createImageData(NOISE_SIZE, NOISE_SIZE);
+  const d = imgData.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const v = Math.random() * 255;
+    d[i] = v; d[i+1] = v; d[i+2] = v; d[i+3] = 255;
+  }
+  noiseCtx.putImageData(imgData, 0, 0);
+})();
+
+function resize() {
+  const newW = Math.round(window.innerWidth * config.renderScale);
+  const newH = Math.round(window.innerHeight * config.renderScale);
+  if (W !== newW || H !== newH) {
+    W = newW;
+    H = newH;
+    canvas.width = W;
+    canvas.height = H;
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+  }
+}
+resize();
+window.addEventListener('resize', resize, { passive: true });
+initParticles(config.particleCount);
+
+function drawBackground(colors) {
+  // 三层渐变
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, rgb(colors.top));
+  grad.addColorStop(0.5, rgb(colors.mid));
+  grad.addColorStop(1, rgb(colors.bottom));
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // 噪点去色带（仅高质量模式）
+  if (config.enableAnim && config.targetFps >= 30) {
+    ctx.save();
+    ctx.globalAlpha = 0.035;
+    ctx.globalCompositeOperation = 'overlay';
+    const pat = ctx.createPattern(noiseCanvas, 'repeat');
+    if (pat) {
+      ctx.fillStyle = pat;
+      ctx.fillRect(0, 0, W, H);
+    }
+    ctx.restore();
+  }
+
+  // 动态光晕 - 增强可见性
+  const t = getCurrentTime();
+
+  if (!colors.isNight) {
+    // 太阳位置和强度
+    const sunProgress = smoothstep(6, 8, t) * (1 - smoothstep(17, 19, t));
+    const sunX = lerp(W * 0.1, W * 0.9, smoothstep(6, 18, t));
+    const sunY = H * 0.8 - smoothstep(6, 12, t) * H * 0.6 * (1 - smoothstep(12, 19, t));
+
+    if (sunProgress > 0.01) {
+      // 大型太阳光晕
+      const sunGlow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, Math.max(W, H) * 0.5);
+      sunGlow.addColorStop(0, rgba([255, 230, 180], 0.4 * sunProgress));
+      sunGlow.addColorStop(0.2, rgba([255, 200, 140], 0.25 * sunProgress));
+      sunGlow.addColorStop(0.5, rgba([255, 180, 120], 0.1 * sunProgress));
+      sunGlow.addColorStop(1, rgba([255, 160, 100], 0));
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = sunGlow;
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+
+      // 太阳核心
+      const sunCore = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, 30);
+      sunCore.addColorStop(0, rgba([255, 250, 220], 0.8 * sunProgress));
+      sunCore.addColorStop(1, rgba([255, 240, 200], 0));
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = sunCore;
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, 30, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  } else {
+    // 月亮
+    const moonProgress = smoothstep(19, 21, t) + (1 - smoothstep(3, 5, t));
+    const moonX = lerp(W * 0.8, W * 0.2, (smoothstep(19, 24, t) + smoothstep(0, 4, t)) * 0.5);
+    const moonY = H * 0.15 + Math.sin(t * 0.3) * H * 0.05;
+
+    if (moonProgress > 0.01) {
+      const moonGlow = ctx.createRadialGradient(moonX, moonY, 0, moonX, moonY, Math.max(W, H) * 0.3);
+      moonGlow.addColorStop(0, rgba([180, 190, 255], 0.25 * moonProgress));
+      moonGlow.addColorStop(0.3, rgba([140, 150, 220], 0.12 * moonProgress));
+      moonGlow.addColorStop(0.7, rgba([100, 110, 180], 0.05 * moonProgress));
+      moonGlow.addColorStop(1, rgba([80, 90, 160], 0));
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = moonGlow;
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+
+      // 月亮核心
+      const moonCore = ctx.createRadialGradient(moonX, moonY, 0, moonX, moonY, 20);
+      moonCore.addColorStop(0, rgba([220, 230, 255], 0.7 * moonProgress));
+      moonCore.addColorStop(1, rgba([200, 210, 240], 0));
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = moonCore;
+      ctx.beginPath();
+      ctx.arc(moonX, moonY, 20, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
+function drawParticles(colors, time) {
+  if (!config.enableParticles) return;
+
+  const isNight = colors.isNight;
+  const baseAlpha = isNight ? 0.8 : 0.4;
+  const particleColor = isNight ? [200, 210, 255] : [255, 250, 230];
+
+  // 批量绘制所有粒子（减少 save/restore 调用）
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = rgba(particleColor, 1);
+
+  for (const p of particles) {
+    // 更新位置
+    p.x += p.vx * p.speed * 2.5;
+    p.y += p.vy * p.speed * 2.5;
+    p.x += Math.sin(time * 0.001 + p.phase * 2) * 0.00015;
+    p.y += Math.cos(time * 0.001 + p.phase * 1.5) * 0.0001;
+    p.x = p.x < 0 ? 1 : p.x > 1 ? 0 : p.x;
+    p.y = p.y < 0 ? 1 : p.y > 1 ? 0 : p.y;
+
+    const twinkle = 0.5 + 0.5 * Math.sin(time * 0.002 * p.speed + p.phase);
+    const alpha = p.alpha * baseAlpha * twinkle;
+
+    const px = p.x * W;
+    const py = p.y * H;
+    const size = p.size * (isNight ? 1.2 : 0.8);
+
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.arc(px, py, size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawFluidWaves(colors, time) {
+  if (!config.enableAnim) return;
+
+  const waveAmp = config.waveAmp;
+  const waveCount = 3;
+  const baseAlpha = colors.isNight ? 0.05 : 0.08;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+
+  for (let i = 0; i < waveCount; i++) {
+    const t = i / waveCount;
+    const yBase = lerp(H * 0.35, H * 0.75, t);
+    const waveColor = lerpC(colors.top, colors.bottom, t);
+    const alpha = baseAlpha * (1 - Math.abs(t - 0.5) * 2);
+
+    ctx.beginPath();
+    ctx.moveTo(0, yBase);
+
+    for (let x = 0; x <= W; x += 8) {
+      const w1 = Math.sin(x * 0.002 + time * 0.002 * config.flowSpeed + i * 1.5) * 50 * waveAmp;
+      const w2 = Math.sin(x * 0.004 + time * 0.003 * config.flowSpeed + i * 2.3) * 30 * waveAmp;
+      const w3 = Math.sin(x * 0.0015 + time * 0.0015 * config.flowSpeed + i * 0.8) * 55 * waveAmp;
+      ctx.lineTo(x, yBase + w1 + w2 + w3);
+    }
+
+    ctx.lineTo(W, H);
+    ctx.lineTo(0, H);
+    ctx.closePath();
+
+    const grad = ctx.createLinearGradient(0, yBase - 80, 0, yBase + 150);
+    grad.addColorStop(0, rgba(waveColor, 0));
+    grad.addColorStop(0.35, rgba(waveColor, alpha * 0.5));
+    grad.addColorStop(0.65, rgba(waveColor, alpha));
+    grad.addColorStop(1, rgba(waveColor, 0));
+    ctx.fillStyle = grad;
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function drawHorizonGlow(colors, time) {
+  // 低性能模式跳过度光晕
+  if (!config.enableAnim || config.targetFps < 15) return;
+
+  const sunriseIntensity = smoothstep(5.5, 7, getCurrentTime()) * (1 - smoothstep(7, 9, getCurrentTime()));
+  const sunsetIntensity = smoothstep(17, 18.5, getCurrentTime()) * (1 - smoothstep(18.5, 20.5, getCurrentTime()));
+  const horizonIntensity = Math.max(sunriseIntensity, sunsetIntensity);
+
+  if (horizonIntensity < 0.01) return;
+
+  const cx = W * 0.5;
+  const cy = H * 0.85;
+  const r = Math.max(W, H) * 0.5;
+
+  let glowColor;
+  if (sunriseIntensity > sunsetIntensity) {
+    glowColor = lerpC([255, 120, 60], [255, 200, 100], sunriseIntensity);
+  } else {
+    glowColor = lerpC([255, 80, 40], [255, 150, 70], sunsetIntensity);
+  }
+
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  grad.addColorStop(0, rgba(glowColor, 0.4 * horizonIntensity));
+  grad.addColorStop(0.35, rgba(glowColor, 0.2 * horizonIntensity));
+  grad.addColorStop(1, rgba(glowColor, 0));
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
+function getCurrentTime() {
+  return config.useRealTime
+    ? new Date().getHours() + new Date().getMinutes() / 60
+    : config.simTime;
+}
+
+function render(ts) {
+  requestAnimationFrame(render);
+
+  // 帧率限制
+  const frameInterval = 1000 / config.targetFps;
+  if (ts - lastFrameTime < frameInterval) return;
+  lastFrameTime = ts;
+
+  // 使用真实时间差，不受帧率影响
+  const realDt = lastTs ? (ts - lastTs) / 16.67 : 1;
+  const dt = clamp(realDt, 0.5, 2);
+  lastTs = ts;
+  // animTime 始终按真实时间增长，与帧率无关
+  animTime += dt;
+
+  const t = getCurrentTime();
+  const colors = getColorsAtTime(t);
+
+  ctx.clearRect(0, 0, W, H);
+  drawBackground(colors);
+  drawFluidWaves(colors, ts);
+  drawHorizonGlow(colors, ts);
+  drawParticles(colors, ts);
+
+  // 更新调试面板
+  updateDebugUI(colors);
+}
+
+// ====== 性能控制 ======
+const performancePresets = {
+  quality: { targetFps: 60, renderScale: 1.0, enableAnim: true, enableParticles: true },
+  balanced: { targetFps: 30, renderScale: 1.0, enableAnim: true, enableParticles: true },
+  power: { targetFps: 15, renderScale: 0.5, enableAnim: true, enableParticles: false },
+  minimal: { targetFps: 5, renderScale: 0.25, enableAnim: false, enableParticles: false }
+};
+
+function setPerformance(preset) {
+  const p = performancePresets[preset];
+  if (!p) return;
+  
+  config.targetFps = p.targetFps;
+  config.renderScale = p.renderScale;
+  config.enableAnim = p.enableAnim;
+  config.enableParticles = p.enableParticles;
+  
+  // 更新 UI
+  document.getElementById('targetFps').value = p.targetFps;
+  document.getElementById('renderScale').value = Math.round(p.renderScale * 100);
+  document.getElementById('enableAnim').checked = p.enableAnim;
+  document.getElementById('enableParticles').checked = p.enableParticles;
+  updatePerfUI();
+  
+  // 重新调整 canvas 尺寸
+  resize();
+  
+  // 如果关闭了粒子，清除粒子系统
+  if (!p.enableParticles && particles.length > 0) {
+    particles.length = 0;
+  } else if (p.enableParticles && particles.length === 0) {
+    initParticles(config.particleCount);
+  }
+}
+
+function updatePerfUI() {
+  document.getElementById('fpsVal').textContent = config.targetFps + 'fps';
+  document.getElementById('resVal').textContent = Math.round(config.renderScale * 100) + '%';
+  
+  // 更新按钮高亮
+  const buttons = document.querySelectorAll('.preset-btn');
+  buttons.forEach(btn => btn.classList.remove('active'));
+  
+  // 检测当前匹配的模式
+  for (const [name, p] of Object.entries(performancePresets)) {
+    if (config.targetFps === p.targetFps &&
+        config.renderScale === p.renderScale &&
+        config.enableAnim === p.enableAnim &&
+        config.enableParticles === p.enableParticles) {
+      buttons.forEach(btn => {
+        if (btn.textContent.toLowerCase().includes(name === 'quality' ? '高质量' : name === 'balanced' ? '均衡' : name === 'power' ? '省电' : '极低')) {
+          btn.classList.add('active');
+        }
+      });
+    }
+  }
+}
+
+// ====== 调试面板 ======
+const panel = document.getElementById('debugPanel');
+let debugOpen = false;
+function toggleDebug() { debugOpen = !debugOpen; panel.classList.toggle('open', debugOpen); }
+
+function updateDebugUI(colors) {
+  if (!debugOpen) return;
+  const h = Math.floor(config.simTime), m = Math.floor((config.simTime - h) * 60);
+  document.getElementById('simTimeDisplay').textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  document.getElementById('simThemeName').textContent = colors.name;
+  document.getElementById('timeVal').textContent = config.simTime.toFixed(2) + 'h';
+  document.getElementById('monthVal').textContent = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'][config.simMonth];
+  document.getElementById('flowSpeedVal').textContent = config.flowSpeed.toFixed(1);
+  document.getElementById('waveAmpVal').textContent = config.waveAmp.toFixed(2);
+  document.getElementById('particleVal').textContent = config.particleCount;
+}
+
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey && ['o','O','p','P','u','U','i','I'].includes(e.key)) { e.preventDefault(); toggleDebug(); }
+});
+
+function bindControls() {
+  const el = document.getElementById('simTime');
+  if (!el) { setTimeout(bindControls, 100); return; }
+  el.oninput = function() { config.useRealTime = false; config.simTime = parseFloat(this.value); updateDebugUI(getColorsAtTime(config.simTime)); };
+  document.getElementById('simMonth').oninput = function() { config.useRealTime = false; config.simMonth = parseInt(this.value); updateDebugUI(getColorsAtTime(config.simTime)); };
+  document.getElementById('useRealTime').onchange = function() { config.useRealTime = this.checked; };
+  document.getElementById('flowSpeed').oninput = function() { config.flowSpeed = parseFloat(this.value); };
+  document.getElementById('waveAmp').oninput = function() { config.waveAmp = parseFloat(this.value); };
+  document.getElementById('particleCount').oninput = function() {
+    config.particleCount = parseInt(this.value);
+    if (config.enableParticles) initParticles(config.particleCount);
+  };
+  
+  // 性能控制
+  document.getElementById('targetFps').oninput = function() {
+    config.targetFps = parseInt(this.value);
+    updatePerfUI();
+  };
+  document.getElementById('renderScale').oninput = function() {
+    config.renderScale = parseInt(this.value) / 100;
+    resize();
+    updatePerfUI();
+  };
+  document.getElementById('enableAnim').onchange = function() {
+    config.enableAnim = this.checked;
+  };
+  document.getElementById('enableParticles').onchange = function() {
+    config.enableParticles = this.checked;
+    if (config.enableParticles && particles.length === 0) {
+      initParticles(config.particleCount);
+    } else if (!config.enableParticles) {
+      particles.length = 0;
+    }
+  };
+}
+
+// ====== 外部 API ======
+(function initFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.has('flowSpeed')) config.flowSpeed = clamp(parseFloat(params.get('flowSpeed')), 0.1, 5);
+  if (params.has('waveAmp')) config.waveAmp = clamp(parseFloat(params.get('waveAmp')), 0, 1);
+  if (params.has('simTime')) { config.simTime = parseFloat(params.get('simTime')); config.useRealTime = false; }
+})();
+
+window.addEventListener('message', function(e) {
+  const data = e.data;
+  if (typeof data === 'object' && data !== null) {
+    if (typeof data.flowSpeed === 'number') config.flowSpeed = clamp(data.flowSpeed, 0.1, 5);
+    if (typeof data.waveAmp === 'number') config.waveAmp = clamp(data.waveAmp, 0, 1);
+    if (typeof data.simTime === 'number') { config.simTime = data.simTime; config.useRealTime = false; }
+    if (typeof data.useRealTime === 'boolean') config.useRealTime = data.useRealTime;
+  }
+});
+
+window.getWallpaperState = () => ({ ...config });
+window.setWallpaperConfig = (cfg) => {
+  if (typeof cfg.flowSpeed === 'number') config.flowSpeed = clamp(cfg.flowSpeed, 0.1, 5);
+  if (typeof cfg.waveAmp === 'number') config.waveAmp = clamp(cfg.waveAmp, 0, 1);
+  if (typeof cfg.particleCount === 'number') {
+    config.particleCount = Math.round(cfg.particleCount);
+    if (config.enableParticles) initParticles(config.particleCount);
+  }
+  if (typeof cfg.simTime === 'number') { config.simTime = cfg.simTime; config.useRealTime = false; }
+  if (typeof cfg.simMonth === 'number') { config.simMonth = cfg.simMonth; config.useRealTime = false; }
+  if (cfg.useRealTime !== undefined) config.useRealTime = !!cfg.useRealTime;
+  // 性能控制
+  if (typeof cfg.targetFps === 'number') config.targetFps = clamp(cfg.targetFps, 1, 60);
+  if (typeof cfg.renderScale === 'number') {
+    config.renderScale = clamp(cfg.renderScale, 0.1, 1);
+    resize();
+  }
+  if (typeof cfg.enableAnim === 'boolean') config.enableAnim = cfg.enableAnim;
+  if (typeof cfg.enableParticles === 'boolean') {
+    config.enableParticles = cfg.enableParticles;
+    if (cfg.enableParticles && particles.length === 0) initParticles(config.particleCount);
+    else if (!cfg.enableParticles) particles.length = 0;
+  }
+};
+
+// ====== 启动 ======
+document.getElementById('simTime').value = config.simTime;
+document.getElementById('simMonth').value = config.simMonth;
+document.getElementById('flowSpeed').value = config.flowSpeed;
+document.getElementById('waveAmp').value = config.waveAmp;
+document.getElementById('particleCount').value = config.particleCount;
+document.getElementById('useRealTime').checked = config.useRealTime;
+
+// 初始化性能 UI
+document.getElementById('targetFps').value = config.targetFps;
+document.getElementById('renderScale').value = Math.round(config.renderScale * 100);
+document.getElementById('enableAnim').checked = config.enableAnim;
+document.getElementById('enableParticles').checked = config.enableParticles;
+updatePerfUI();
+
+bindControls();
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
