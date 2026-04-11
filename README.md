@@ -2,6 +2,8 @@
 
 A cross-platform Flutter app that uses HTML/CSS/JavaScript animations as live wallpapers. Supports **Windows** (desktop wallpaper) and **Android** (live wallpaper service).
 
+[🇨🇳 中文版](README_ZH.md)
+
 ## Features
 
 - 🎨 **Built-in wallpapers** — 3 beautiful animated HTML wallpapers:
