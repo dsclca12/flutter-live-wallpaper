@@ -38,6 +38,11 @@ dependencies:
   path: ^1.9.1
   shared_preferences: ^2.5.5
   pointer_interceptor: ^0.10.1+2
+  
+  # 系统信息获取
+  battery_plus: ^6.2.0
+  device_info_plus: ^11.3.0
+  network_info_plus: ^6.1.2
 
 dev_dependencies:
   flutter_test:
@@ -64,6 +69,7 @@ flutter:
     - wallpaper.html
     - wallpaper2.html
     - wallpaper3.html
+    - wallpaper4.html
 
   # To add assets to your application, add an assets section, like this:
   # assets:

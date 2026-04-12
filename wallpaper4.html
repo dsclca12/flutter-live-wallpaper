@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统监控壁纸</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', 'Segoe UI', Arial, sans-serif;
+            overflow: hidden;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 30px;
+            max-width: 800px;
+            padding: 40px;
+        }
+
+        .info-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .info-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .info-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+
+        .info-label {
+            font-size: 14px;
+            opacity: 0.8;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .info-value {
+            font-size: 36px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .info-sub {
+            font-size: 12px;
+            opacity: 0.7;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 15px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00d4ff, #00ff88);
+            border-radius: 10px;
+            transition: width 0.5s ease;
+        }
+
+        .title {
+            font-size: 48px;
+            font-weight: bold;
+            margin-bottom: 40px;
+            text-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .timestamp {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            font-size: 12px;
+            opacity: 0.7;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .charging {
+            animation: pulse 2s infinite;
+            color: #00ff88;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">📊 系统监控面板</h1>
+        
+        <div class="info-grid">
+            <!-- 电池信息 -->
+            <div class="info-card">
+                <div class="info-icon">🔋</div>
+                <div class="info-label">电池电量</div>
+                <div class="info-value" id="battery-level">--%</div>
+                <div class="info-sub" id="battery-state">等待数据...</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="battery-bar" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- CPU 使用率 -->
+            <div class="info-card">
+                <div class="info-icon">💻</div>
+                <div class="info-label">CPU 使用率</div>
+                <div class="info-value" id="cpu-usage">--%</div>
+                <div class="info-sub">处理器负载</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="cpu-bar" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- 内存使用 -->
+            <div class="info-card">
+                <div class="info-icon">🧠</div>
+                <div class="info-label">内存使用</div>
+                <div class="info-value" id="memory-usage">--%</div>
+                <div class="info-sub" id="memory-detail">-- / -- GB</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="memory-bar" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- 网络信息 -->
+            <div class="info-card">
+                <div class="info-icon">🌐</div>
+                <div class="info-label">网络状态</div>
+                <div class="info-value" id="network-type">--</div>
+                <div class="info-sub" id="network-name">等待数据...</div>
+            </div>
+        </div>
+
+        <div class="timestamp" id="timestamp">更新时间: --</div>
+    </div>
+
+    <script>
+        // 接收来自 Flutter 的配置
+        window.setWallpaperConfig = (cfg) => {
+            console.log('Received config:', cfg);
+            
+            // 更新电池信息
+            if (cfg.batteryLevel !== undefined) {
+                document.getElementById('battery-level').textContent = Math.round(cfg.batteryLevel) + '%';
+                document.getElementById('battery-bar').style.width = cfg.batteryLevel + '%';
+                
+                // 根据电量调整颜色
+                const bar = document.getElementById('battery-bar');
+                if (cfg.batteryLevel < 20) {
+                    bar.style.background = 'linear-gradient(90deg, #ff4444, #ff6b6b)';
+                } else if (cfg.batteryLevel < 50) {
+                    bar.style.background = 'linear-gradient(90deg, #ffaa00, #ffcc00)';
+                } else {
+                    bar.style.background = 'linear-gradient(90deg, #00d4ff, #00ff88)';
+                }
+            }
+            
+            if (cfg.isCharging !== undefined) {
+                const stateEl = document.getElementById('battery-state');
+                if (cfg.isCharging) {
+                    stateEl.innerHTML = '<span class="charging">⚡ 充电中</span>';
+                } else if (cfg.batteryState === 'full') {
+                    stateEl.textContent = '✓ 已充满';
+                } else {
+                    stateEl.textContent = '🔌 未充电';
+                }
+            }
+            
+            // 更新 CPU 信息
+            if (cfg.cpuUsage !== undefined) {
+                document.getElementById('cpu-usage').textContent = Math.round(cfg.cpuUsage) + '%';
+                document.getElementById('cpu-bar').style.width = cfg.cpuUsage + '%';
+                
+                // 根据 CPU 使用率调整颜色
+                const bar = document.getElementById('cpu-bar');
+                if (cfg.cpuUsage > 80) {
+                    bar.style.background = 'linear-gradient(90deg, #ff4444, #ff6b6b)';
+                } else if (cfg.cpuUsage > 50) {
+                    bar.style.background = 'linear-gradient(90deg, #ffaa00, #ffcc00)';
+                } else {
+                    bar.style.background = 'linear-gradient(90deg, #00d4ff, #00ff88)';
+                }
+            }
+            
+            // 更新内存信息
+            if (cfg.memoryUsagePercent !== undefined) {
+                document.getElementById('memory-usage').textContent = Math.round(cfg.memoryUsagePercent) + '%';
+                document.getElementById('memory-bar').style.width = cfg.memoryUsagePercent + '%';
+            }
+            
+            if (cfg.totalMemory !== undefined && cfg.usedMemory !== undefined) {
+                const usedGB = (cfg.usedMemory / 1024).toFixed(1);
+                const totalGB = (cfg.totalMemory / 1024).toFixed(1);
+                document.getElementById('memory-detail').textContent = `${usedGB} / ${totalGB} GB`;
+            }
+            
+            // 更新网络信息
+            if (cfg.networkType !== undefined) {
+                document.getElementById('network-type').textContent = cfg.networkType;
+            }
+            
+            if (cfg.wifiName !== undefined) {
+                document.getElementById('network-name').textContent = cfg.wifiName || '--';
+            } else if (cfg.wifiIP !== undefined) {
+                document.getElementById('network-name').textContent = cfg.wifiIP || '--';
+            }
+            
+            // 更新时间戳
+            if (cfg.timestamp !== undefined) {
+                const time = new Date(cfg.timestamp).toLocaleTimeString('zh-CN');
+                document.getElementById('timestamp').textContent = `更新时间: ${time}`;
+            }
+        };
+
+        // 初始化默认显示
+        console.log('System Monitor Wallpaper loaded');
+    </script>
+</body>
+</html>

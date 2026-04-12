@@ -14,6 +14,7 @@ import 'services/android_wallpaper_bridge.dart';
 import 'services/app_settings_store.dart';
 import 'services/desktop_wallpaper_bridge.dart';
 import 'services/wallpaper_catalog.dart';
+import 'services/system_info_service.dart';
 
 class HtmlWallpaperApp extends StatelessWidget {
   const HtmlWallpaperApp({super.key});
@@ -1085,14 +1086,62 @@ class _PreviewPanelState extends State<_PreviewPanel> {
   SunriseConfig _sunriseConfig = const SunriseConfig();
   Timer? _configApplyHintHideTimer;
   bool _showConfigAppliedHint = false;
+  
+  // 系统信息服务
+  final SystemInfoService _systemInfoService = SystemInfoService();
+  Timer? _systemInfoTimer;
 
   bool get _isSunriseWallpaper => widget.wallpaper?.id == 'wallpaper3.html';
 
   @override
+  void initState() {
+    super.initState();
+    // 启动系统信息定时更新
+    _startSystemInfoUpdates();
+  }
+
+  @override
   void dispose() {
     _configApplyHintHideTimer?.cancel();
+    _systemInfoTimer?.cancel();
     _configNotifier.dispose();
     super.dispose();
+  }
+  
+  /// 启动系统信息定时更新
+  void _startSystemInfoUpdates() {
+    // 默认 5 秒更新一次，可以在设置中自定义
+    const interval = Duration(seconds: 5);
+    
+    _systemInfoTimer = Timer.periodic(interval, (timer) async {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      
+      try {
+        final systemInfo = await _systemInfoService.getSystemInfo();
+        _updateSystemInfo(systemInfo);
+      } catch (e) {
+        // 忽略系统信息获取失败
+      }
+    });
+    
+    // 立即获取一次
+    _systemInfoService.getSystemInfo().then((info) {
+      if (mounted) {
+        _updateSystemInfo(info);
+      }
+    });
+  }
+  
+  /// 更新系统信息到配置
+  void _updateSystemInfo(SystemInfo info) {
+    if (!mounted) return;
+    
+    final currentConfig = Map<String, dynamic>.from(_configNotifier.value);
+    currentConfig.addAll(info.toJson());
+    _configNotifier.value = currentConfig;
   }
 
   void _notifyConfigApplied() {

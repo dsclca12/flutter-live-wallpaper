@@ -10,6 +10,19 @@ class WallpaperConfig {
   final bool useRealTime;
   final double? simTime;
   final int? simMonth;
+  
+  // 系统信息字段
+  final double? batteryLevel;        // 电池电量 0-100
+  final bool? isCharging;            // 是否充电中
+  final String? batteryState;        // 充电状态
+  final double? cpuUsage;            // CPU 使用率
+  final double? totalMemory;         // 总内存 (MB)
+  final double? usedMemory;          // 已用内存 (MB)
+  final double? memoryUsagePercent;  // 内存使用率
+  final String? wifiName;            // WiFi 名称
+  final String? wifiIP;              // WiFi IP
+  final String? networkType;         // 网络类型
+  final String? timestamp;           // 时间戳
 
   const WallpaperConfig({
     this.flowSpeed = 5.0,
@@ -18,6 +31,17 @@ class WallpaperConfig {
     this.useRealTime = true,
     this.simTime,
     this.simMonth,
+    this.batteryLevel,
+    this.isCharging,
+    this.batteryState,
+    this.cpuUsage,
+    this.totalMemory,
+    this.usedMemory,
+    this.memoryUsagePercent,
+    this.wifiName,
+    this.wifiIP,
+    this.networkType,
+    this.timestamp,
   });
 
   WallpaperConfig copyWith({
@@ -27,6 +51,17 @@ class WallpaperConfig {
     bool? useRealTime,
     double? simTime,
     int? simMonth,
+    double? batteryLevel,
+    bool? isCharging,
+    String? batteryState,
+    double? cpuUsage,
+    double? totalMemory,
+    double? usedMemory,
+    double? memoryUsagePercent,
+    String? wifiName,
+    String? wifiIP,
+    String? networkType,
+    String? timestamp,
   }) {
     return WallpaperConfig(
       flowSpeed: flowSpeed ?? this.flowSpeed,
@@ -35,6 +70,17 @@ class WallpaperConfig {
       useRealTime: useRealTime ?? this.useRealTime,
       simTime: simTime ?? this.simTime,
       simMonth: simMonth ?? this.simMonth,
+      batteryLevel: batteryLevel ?? this.batteryLevel,
+      isCharging: isCharging ?? this.isCharging,
+      batteryState: batteryState ?? this.batteryState,
+      cpuUsage: cpuUsage ?? this.cpuUsage,
+      totalMemory: totalMemory ?? this.totalMemory,
+      usedMemory: usedMemory ?? this.usedMemory,
+      memoryUsagePercent: memoryUsagePercent ?? this.memoryUsagePercent,
+      wifiName: wifiName ?? this.wifiName,
+      wifiIP: wifiIP ?? this.wifiIP,
+      networkType: networkType ?? this.networkType,
+      timestamp: timestamp ?? this.timestamp,
     );
   }
 
@@ -47,6 +93,20 @@ class WallpaperConfig {
     };
     if (simTime != null) map['simTime'] = simTime;
     if (simMonth != null) map['simMonth'] = simMonth;
+    
+    // 系统信息
+    if (batteryLevel != null) map['batteryLevel'] = batteryLevel;
+    if (isCharging != null) map['isCharging'] = isCharging;
+    if (batteryState != null) map['batteryState'] = batteryState;
+    if (cpuUsage != null) map['cpuUsage'] = cpuUsage;
+    if (totalMemory != null) map['totalMemory'] = totalMemory;
+    if (usedMemory != null) map['usedMemory'] = usedMemory;
+    if (memoryUsagePercent != null) map['memoryUsagePercent'] = memoryUsagePercent;
+    if (wifiName != null) map['wifiName'] = wifiName;
+    if (wifiIP != null) map['wifiIP'] = wifiIP;
+    if (networkType != null) map['networkType'] = networkType;
+    if (timestamp != null) map['timestamp'] = timestamp;
+    
     return map;
   }
 
