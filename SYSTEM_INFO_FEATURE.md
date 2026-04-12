@@ -106,10 +106,28 @@ void _startSystemInfoUpdates() {
 | 系统信息 | Windows | Android | 说明 |
 |---------|---------|---------|------|
 | 电池电量 | ✅ | ✅ | 使用 battery_plus |
-| CPU 使用率 | ✅ | ⚠️ | Windows 用 PowerShell，Android 需额外实现 |
+| CPU 使用率 | ✅ | ✅ | Windows 用 PowerShell，Android 读 /proc/stat |
 | 内存使用 | ✅ | ✅ | Windows 用 WMI，Android 读 /proc/meminfo |
-| WiFi 名称 | ✅ | ✅ | 使用 network_info_plus |
+| WiFi 名称 | ✅ | ⚠️ | Android 10+ 需要位置权限 |
 | WiFi IP | ✅ | ✅ | 使用 network_info_plus |
+| 网络类型 | ⚠️ | ✅ | Android 可检测 WiFi/移动数据 |
+
+#### Android 权限要求
+
+已在 `AndroidManifest.xml` 中添加以下权限：
+
+```xml
+<!-- 系统信息获取权限 -->
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+```
+
+**注意**：
+- Android 10+ (API 29+) 获取 WiFi 名称需要**位置权限**
+- 应用会在运行时请求位置权限（首次使用时）
+- 如果用户拒绝位置权限，`wifiName` 将返回 `null`，但其他功能正常
 
 ## 🎨 自定义 HTML 壁纸
 

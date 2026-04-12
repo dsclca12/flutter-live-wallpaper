@@ -14,7 +14,6 @@ class WallpaperCatalog {
     ('wallpaper.html', 'Warm Fluid', '柔和渐变和流体动画，适合做默认桌面背景。'),
     ('wallpaper2.html', 'Fluid Time', '更偏暗色和信息面板风格，适合做实验性动态壁纸。'),
     ('wallpaper3.html', '晨曦流光', '随日出日落变化的动态天空，支持性能调节。'),
-    ('wallpaper4.html', '系统监控', '实时显示电池、CPU、内存和网络状态。'),
   ];
 
   Future<List<WallpaperSource>> loadBundledWallpapers() async {

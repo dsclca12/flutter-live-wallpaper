@@ -150,12 +150,65 @@ class SystemInfoService {
   /// Android CPU 使用率 (从 /proc/stat 读取)
   Future<double?> _getCpuUsageAndroid() async {
     try {
-      // 简化实现：读取 /proc/stat 计算 CPU 使用率
-      // 这里返回 null，实际可以采样两次 /proc/stat 计算差值
-      return null;
+      // 读取两次 /proc/stat 计算 CPU 使用率
+      final stat1 = await _readCpuStat();
+      if (stat1 == null) return null;
+      
+      // 等待 1 秒后再次读取
+      await Future.delayed(const Duration(seconds: 1));
+      
+      final stat2 = await _readCpuStat();
+      if (stat2 == null) return null;
+      
+      // 计算差值
+      final totalDiff = stat2.total - stat1.total;
+      final idleDiff = stat2.idle - stat1.idle;
+      
+      if (totalDiff > 0) {
+        return ((totalDiff - idleDiff) / totalDiff) * 100;
+      }
     } catch (e) {
-      return null;
+      // 忽略错误
     }
+    return null;
+  }
+  
+  /// 读取 /proc/stat 中的 CPU 数据
+  Future<_CpuStat?> _readCpuStat() async {
+    try {
+      final result = await Process.run('cat', ['/proc/stat']);
+      if (result.exitCode == 0 && result.stdout != null) {
+        final output = result.stdout.toString();
+        final lines = output.split('\n');
+        
+        // 查找以 "cpu " 开头的行
+        for (final line in lines) {
+          if (line.startsWith('cpu ')) {
+            final parts = line.split(RegExp(r'\s+'));
+            // parts: cpu, user, nice, system, idle, iowait, irq, softirq, steal
+            if (parts.length >= 5) {
+              final user = int.tryParse(parts[1]) ?? 0;
+              final nice = int.tryParse(parts[2]) ?? 0;
+              final system = int.tryParse(parts[3]) ?? 0;
+              final idle = int.tryParse(parts[4]) ?? 0;
+              final iowait = int.tryParse(parts.length > 5 ? parts[5] : '0') ?? 0;
+              final irq = int.tryParse(parts.length > 6 ? parts[6] : '0') ?? 0;
+              final softirq = int.tryParse(parts.length > 7 ? parts[7] : '0') ?? 0;
+              final steal = int.tryParse(parts.length > 8 ? parts[8] : '0') ?? 0;
+              
+              final totalIdle = idle + iowait;
+              final totalUsage = user + nice + system + irq + softirq + steal;
+              final total = totalIdle + totalUsage;
+              
+              return _CpuStat(total, totalIdle);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // 忽略错误
+    }
+    return null;
   }
 
   /// 获取总内存 (MB)
@@ -316,7 +369,24 @@ class SystemInfoService {
   /// Android 网络类型
   Future<String?> _getNetworkTypeAndroid() async {
     try {
-      // 简化实现，可以结合 connectivity_plus 包获取详细信息
+      // 尝试读取 /sys/class/net/wlan0/operstate 判断 WiFi
+      final wifiResult = await Process.run('cat', ['/sys/class/net/wlan0/operstate']);
+      if (wifiResult.exitCode == 0 && wifiResult.stdout != null) {
+        final wifiState = wifiResult.stdout.toString().trim();
+        if (wifiState == 'up') {
+          return 'WiFi';
+        }
+      }
+      
+      // 尝试检查移动数据
+      final mobileResult = await Process.run('cat', ['/sys/class/net/rmnet_data0/operstate']);
+      if (mobileResult.exitCode == 0 && mobileResult.stdout != null) {
+        final mobileState = mobileResult.stdout.toString().trim();
+        if (mobileState == 'up') {
+          return 'Mobile';
+        }
+      }
+      
       return null;
     } catch (e) {
       return null;
@@ -327,4 +397,12 @@ class SystemInfoService {
   Stream<SystemInfo> watchSystemInfo({Duration interval = const Duration(seconds: 1)}) {
     return Stream.periodic(interval, (_) => getSystemInfo()).asyncMap((future) => future);
   }
+}
+
+/// CPU 统计数据辅助类
+class _CpuStat {
+  final int total;
+  final int idle;
+  
+  const _CpuStat(this.total, this.idle);
 }

@@ -1,10 +1,15 @@
 package io.github.html_wallpaper
 
 import android.annotation.SuppressLint
+import android.app.ActivityManager
 import android.app.WallpaperColors
-import android.os.Build
+import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.BatteryManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.service.wallpaper.WallpaperService
@@ -15,6 +20,9 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import org.json.JSONArray
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.FileReader
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -100,6 +108,12 @@ class HtmlWallpaperService : WallpaperService() {
                 scheduleColorRefresh()
             }
         }
+        private val systemInfoTicker = object : Runnable {
+            override fun run() {
+                pushSystemInfo()
+                scheduleSystemInfoRefresh()
+            }
+        }
 
         private var webView: WebView? = null
         private var isVisible = false
@@ -167,6 +181,9 @@ class HtmlWallpaperService : WallpaperService() {
                         resizeWebView()
                         renderFrame()
                         refreshWallpaperColors(forceNotify = true)
+                        // 启动系统信息推送
+                        pushSystemInfo()
+                        scheduleSystemInfoRefresh()
                     }
                 }
             }
@@ -320,6 +337,7 @@ class HtmlWallpaperService : WallpaperService() {
             } else {
                 mainHandler.removeCallbacks(renderTicker)
                 mainHandler.removeCallbacks(colorTicker)
+                mainHandler.removeCallbacks(systemInfoTicker)
                 mainHandler.post {
                     webView?.pauseTimers()
                     webView?.onPause()
@@ -330,6 +348,7 @@ class HtmlWallpaperService : WallpaperService() {
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
             mainHandler.removeCallbacks(renderTicker)
             mainHandler.removeCallbacks(colorTicker)
+            mainHandler.removeCallbacks(systemInfoTicker)
             super.onSurfaceDestroyed(holder)
         }
 
@@ -508,6 +527,198 @@ class HtmlWallpaperService : WallpaperService() {
 
         private fun isDynamicColorsEnabled(): Boolean {
             return AndroidWallpaperPreferences.isDynamicColorsEnabled(this@HtmlWallpaperService)
+        }
+
+        // ========== 系统信息推送 ==========
+        
+        private fun scheduleSystemInfoRefresh(immediate: Boolean = false) {
+            mainHandler.removeCallbacks(systemInfoTicker)
+            if (!isVisible) return
+            // 5 秒更新一次
+            val delay = if (immediate) 0L else 5000L
+            mainHandler.postDelayed(systemInfoTicker, delay)
+        }
+        
+        private fun pushSystemInfo() {
+            val view = webView ?: return
+            if (!pageLoaded || !isVisible) return
+            
+            val batteryLevel = getBatteryLevel()
+            val isCharging = getIsCharging()
+            val batteryState = getBatteryState()
+            val cpuUsage = getCpuUsage()
+            val totalMemory = getTotalMemory()
+            val usedMemory = getUsedMemory()
+            val memoryUsagePercent = if (totalMemory != null && totalMemory > 0) (usedMemory * 100.0 / totalMemory) else null
+            val wifiName = getWifiName()
+            val wifiIP = getWifiIP()
+            val networkType = getNetworkType()
+            val timestamp = System.currentTimeMillis()
+            
+            val config = JSONObject().apply {
+                put("batteryLevel", batteryLevel)
+                put("isCharging", isCharging)
+                put("batteryState", batteryState)
+                put("cpuUsage", cpuUsage)
+                put("totalMemory", totalMemory)
+                put("usedMemory", usedMemory)
+                put("memoryUsagePercent", memoryUsagePercent)
+                put("wifiName", wifiName)
+                put("wifiIP", wifiIP)
+                put("networkType", networkType)
+                put("timestamp", timestamp)
+            }
+            
+            val script = """
+                try {
+                    if (typeof window.setWallpaperConfig === 'function') {
+                        window.setWallpaperConfig(${config.toString()});
+                    }
+                } catch(e) {
+                    console.error('System info push failed:', e);
+                }
+            """.trimIndent()
+            
+            view.evaluateJavascript(script, null)
+        }
+        
+        private fun getBatteryLevel(): Double? {
+            return try {
+                val bm = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+                val level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                if (level > 0) level.toDouble() else null
+            } catch (e: Exception) {
+                null
+            }
+        }
+        
+        private fun getIsCharging(): Boolean? {
+            return try {
+                val bm = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+                val status = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_STATUS)
+                when (status) {
+                    BatteryManager.BATTERY_STATUS_CHARGING,
+                    BatteryManager.BATTERY_STATUS_FULL -> true
+                    BatteryManager.BATTERY_STATUS_DISCHARGING,
+                    BatteryManager.BATTERY_STATUS_NOT_CHARGING -> false
+                    else -> null
+                }
+            } catch (e: Exception) {
+                null
+            }
+        }
+        
+        private fun getBatteryState(): String? {
+            return try {
+                val bm = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+                val status = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_STATUS)
+                when (status) {
+                    BatteryManager.BATTERY_STATUS_CHARGING -> "charging"
+                    BatteryManager.BATTERY_STATUS_DISCHARGING -> "discharging"
+                    BatteryManager.BATTERY_STATUS_FULL -> "full"
+                    BatteryManager.BATTERY_STATUS_NOT_CHARGING -> "connected_not_charging"
+                    else -> null
+                }
+            } catch (e: Exception) {
+                null
+            }
+        }
+        
+        private fun getCpuUsage(): Double? {
+            return try {
+                // 读取 /proc/stat 计算 CPU 使用率
+                val reader = BufferedReader(FileReader("/proc/stat"))
+                val line = reader.readLine()
+                reader.close()
+                
+                if (line != null && line.startsWith("cpu ")) {
+                    val parts = line.split(Regex("\\s+")).filter { it.isNotEmpty() }
+                    if (parts.size >= 5) {
+                        val user = parts[1].toLong()
+                        val nice = parts[2].toLong()
+                        val system = parts[3].toLong()
+                        val idle = parts[4].toLong()
+                        val iowait = if (parts.size > 5) parts[5].toLong() else 0
+                        val irq = if (parts.size > 6) parts[6].toLong() else 0
+                        val softirq = if (parts.size > 7) parts[7].toLong() else 0
+                        val steal = if (parts.size > 8) parts[8].toLong() else 0
+                        
+                        val totalIdle = idle + iowait
+                        val totalUsage = user + nice + system + irq + softirq + steal
+                        val total = totalIdle + totalUsage
+                        
+                        if (total > 0) {
+                            return (totalUsage * 100.0 / total)
+                        }
+                    }
+                }
+                null
+            } catch (e: Exception) {
+                null
+            }
+        }
+        
+        private fun getTotalMemory(): Double? {
+            return try {
+                val reader = BufferedReader(FileReader("/proc/meminfo"))
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    if (line!!.startsWith("MemTotal:")) {
+                        val kb = Regex("MemTotal:\\s+(\\d+)").find(line!!)?.groupValues?.get(1)?.toDoubleOrNull()
+                        reader.close()
+                        return if (kb != null) kb / 1024.0 else null // 转换为 MB
+                    }
+                }
+                reader.close()
+                null
+            } catch (e: Exception) {
+                null
+            }
+        }
+        
+        private fun getUsedMemory(): Double {
+            return try {
+                val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                val mi = ActivityManager.MemoryInfo()
+                am.getMemoryInfo(mi)
+                (mi.totalMem - mi.availMem) / (1024.0 * 1024.0) // 转换为 MB
+            } catch (e: Exception) {
+                0.0
+            }
+        }
+        
+        private fun getWifiName(): String? {
+            return try {
+                val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                val network = cm.activeNetwork ?: return null
+                val caps = cm.getNetworkCapabilities(network) ?: return null
+                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                    "WiFi"
+                } else null
+            } catch (e: Exception) {
+                null
+            }
+        }
+        
+        private fun getWifiIP(): String? {
+            return null // 简化实现
+        }
+        
+        private fun getNetworkType(): String? {
+            return try {
+                val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                val network = cm.activeNetwork ?: return null
+                val caps = cm.getNetworkCapabilities(network) ?: return null
+                
+                when {
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "WiFi"
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Mobile"
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
+                    else -> "Unknown"
+                }
+            } catch (e: Exception) {
+                null
+            }
         }
 
         override fun onComputeColors(): WallpaperColors? {
