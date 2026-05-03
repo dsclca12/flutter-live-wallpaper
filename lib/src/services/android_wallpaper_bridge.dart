@@ -32,14 +32,37 @@ class AndroidWallpaperBridge {
       return false;
     }
 
+    // 根据壁纸类型准备不同的数据
+    final Map<String, Object?> args = <String, Object?>{
+      'mediaType': _mediaTypeToString(wallpaper.mediaType),
+      'filePath': wallpaper.filePath,
+    };
+
+    // HTML 类型需要传递内容
+    if (wallpaper.isHtml && wallpaper.htmlContent != null) {
+      args['html'] = wallpaper.htmlContent;
+      args['baseUrl'] = _baseUrlForWallpaper(wallpaper);
+    }
+
     final bool? prepared = await _channel.invokeMethod<bool>(
       'prepareWallpaper',
-      <String, Object?>{
-        'html': wallpaper.htmlContent,
-        'baseUrl': _baseUrlForWallpaper(wallpaper),
-      },
+      args,
     );
     return prepared ?? false;
+  }
+
+  /// 将媒体类型转换为字符串供原生端使用
+  static String _mediaTypeToString(WallpaperMediaType type) {
+    switch (type) {
+      case WallpaperMediaType.html:
+        return 'html';
+      case WallpaperMediaType.image:
+        return 'image';
+      case WallpaperMediaType.gif:
+        return 'gif';
+      case WallpaperMediaType.video:
+        return 'video';
+    }
   }
 
   static Future<bool> openWallpaperPicker() async {

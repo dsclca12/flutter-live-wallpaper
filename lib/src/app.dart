@@ -230,7 +230,7 @@ class _WallpaperHomePageState extends State<WallpaperHomePage>
       }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('加载 HTML 失败: $error')));
+      ).showSnackBar(SnackBar(content: Text('加载壁纸文件失败: $error')));
     } finally {
       if (mounted) {
         setState(() {
@@ -706,7 +706,7 @@ class _WallpaperSidebar extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              '导入或选择一个 HTML 文件，在当前平台预览后直接应用到桌面或动态壁纸服务。',
+              '导入或选择一个壁纸文件（支持 HTML、图片、GIF、视频），在当前平台预览后直接应用到桌面或动态壁纸服务。',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: const Color(0xFFAEB7C5),
                 height: 1.5,
@@ -722,7 +722,7 @@ class _WallpaperSidebar extends StatelessWidget {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.upload_file_rounded),
-              label: const Text('导入 HTML 文件'),
+              label: const Text('导入壁纸文件'),
             ),
             const SizedBox(height: 16),
             _SettingsCard(
@@ -1300,10 +1300,10 @@ class _PreviewPanelState extends State<_PreviewPanel> {
                 child: DecoratedBox(
                   decoration: const BoxDecoration(color: Colors.black),
                   child: selectedWallpaper == null
-                      ? const Center(child: Text('请选择一个 HTML 壁纸'))
+                      ? const Center(child: Text('请选择一个壁纸文件'))
                       : WallpaperPreview(
                           key: ValueKey(selectedWallpaper.id),
-                          htmlContent: selectedWallpaper.htmlContent,
+                          wallpaper: selectedWallpaper,
                           configNotifier: _configNotifier,
                           showSettingsButton: _isSunriseWallpaper,
                           onSettingsTap: _openControlPanel,
@@ -1489,7 +1489,7 @@ class _WallpaperModePageState extends State<WallpaperModePage> {
       body: Stack(
         children: [
           Positioned.fill(
-            child: WallpaperPreview(htmlContent: widget.wallpaper.htmlContent),
+            child: WallpaperPreview(wallpaper: widget.wallpaper),
           ),
           if (showOverlay)
             Positioned(

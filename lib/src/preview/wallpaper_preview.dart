@@ -7,16 +7,22 @@ import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_windows/webview_windows.dart';
 
+import '../models/wallpaper_source.dart';
+import 'media_preview.dart';
+
 class WallpaperPreview extends StatefulWidget {
   const WallpaperPreview({
     super.key,
-    required this.htmlContent,
+    this.htmlContent,
+    this.wallpaper,
     this.configNotifier,
     this.showSettingsButton = false,
     this.onSettingsTap,
-  });
+  }) : assert(htmlContent != null || wallpaper != null, 
+             'Either htmlContent or wallpaper must be provided');
 
-  final String htmlContent;
+  final String? htmlContent;
+  final WallpaperSource? wallpaper;
 
   /// 可选：通过 ValueNotifier 传递配置变化
   final ValueNotifier<Map<String, dynamic>>? configNotifier;
@@ -33,6 +39,14 @@ class WallpaperPreview extends StatefulWidget {
 
 class _WallpaperPreviewState extends State<WallpaperPreview> {
   Object? _controller;
+
+  WallpaperSource? get _wallpaper => widget.wallpaper;
+  
+  String get _htmlContent {
+    if (widget.htmlContent != null) return widget.htmlContent!;
+    if (_wallpaper?.htmlContent != null) return _wallpaper!.htmlContent!;
+    return '';
+  }
 
   @override
   void initState() {
@@ -98,9 +112,15 @@ class _WallpaperPreviewState extends State<WallpaperPreview> {
       );
     }
 
+    // 如果是图片/视频/GIF，使用媒体预览组件
+    if (_wallpaper != null && 
+        (_wallpaper!.isImage || _wallpaper!.isVideo || _wallpaper!.isGif)) {
+      return MediaPreview(wallpaper: _wallpaper!);
+    }
+
     if (Platform.isWindows) {
       return WindowsWallpaperPreview(
-        htmlContent: widget.htmlContent,
+        htmlContent: _htmlContent,
         onControllerReady: _setController,
         showSettingsButton: widget.showSettingsButton,
         onSettingsTap: widget.onSettingsTap,
@@ -109,7 +129,7 @@ class _WallpaperPreviewState extends State<WallpaperPreview> {
 
     if (Platform.isAndroid) {
       return AndroidWallpaperPreview(
-        htmlContent: widget.htmlContent,
+        htmlContent: _htmlContent,
         onControllerReady: _setController,
         showSettingsButton: widget.showSettingsButton,
         onSettingsTap: widget.onSettingsTap,

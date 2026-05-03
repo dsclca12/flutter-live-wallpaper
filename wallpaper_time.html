@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Time Wallpaper</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      transition: background 2s ease;
+    }
+
+    /* 微妙的光晕效果 */
+    .glow {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.4;
+      animation: float 20s ease-in-out infinite;
+    }
+
+    .glow-1 {
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%);
+      top: 20%;
+      left: 30%;
+      animation-delay: 0s;
+    }
+
+    .glow-2 {
+      width: 300px;
+      height: 300px;
+      background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, transparent 70%);
+      top: 60%;
+      right: 25%;
+      animation-delay: -7s;
+    }
+
+    @keyframes float {
+      0%, 100% {
+        transform: translate(0, 0) scale(1);
+      }
+      33% {
+        transform: translate(30px, -30px) scale(1.1);
+      }
+      66% {
+        transform: translate(-20px, 20px) scale(0.9);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="glow glow-1"></div>
+  <div class="glow glow-2"></div>
+
+  <script>
+    // 根据时间改变背景色 - 每30分钟一个渐变
+    function updateBackground() {
+      const now = new Date();
+      const hour = now.getHours();
+      const minute = now.getMinutes();
+      const timeValue = hour + minute / 60; // 精确到分钟的时间值
+      
+      let gradient;
+      
+      // 凌晨 (0:00-2:30) - 深紫色夜空
+      if (timeValue < 2.5) {
+        gradient = 'linear-gradient(135deg, #1a0f2e 0%, #2d1b4e 100%)';
+      }
+      // 凌晨到清晨过渡 (2:30-5:00)
+      else if (timeValue < 5) {
+        gradient = 'linear-gradient(135deg, #2d1b4e 0%, #4a2c6e 100%)';
+      }
+      // 清晨初现 (5:00-5:30)
+      else if (timeValue < 5.5) {
+        gradient = 'linear-gradient(135deg, #4a2c6e 0%, #6b3a8a 100%)';
+      }
+      // 清晨 (5:30-6:00)
+      else if (timeValue < 6) {
+        gradient = 'linear-gradient(135deg, #6b3a8a 0%, #8b4fa0 100%)';
+      }
+      // 清晨到日出过渡 (6:00-6:30)
+      else if (timeValue < 6.5) {
+        gradient = 'linear-gradient(135deg, #8b4fa0 0%, #a85d7a 100%)';
+      }
+      // 日出 (6:30-7:00)
+      else if (timeValue < 7) {
+        gradient = 'linear-gradient(135deg, #a85d7a 0%, #c96b6a 100%)';
+      }
+      // 早晨 (7:00-7:30)
+      else if (timeValue < 7.5) {
+        gradient = 'linear-gradient(135deg, #c96b6a 0%, #e07a5f 100%)';
+      }
+      // 早晨到上午过渡 (7:30-8:00)
+      else if (timeValue < 8) {
+        gradient = 'linear-gradient(135deg, #e07a5f 0%, #e89060 100%)';
+      }
+      // 上午初 (8:00-8:30)
+      else if (timeValue < 8.5) {
+        gradient = 'linear-gradient(135deg, #e89060 0%, #d4a05a 100%)';
+      }
+      // 上午 (8:30-9:00)
+      else if (timeValue < 9) {
+        gradient = 'linear-gradient(135deg, #d4a05a 0%, #b8c45a 100%)';
+      }
+      // 上午到中午过渡 (9:00-9:30)
+      else if (timeValue < 9.5) {
+        gradient = 'linear-gradient(135deg, #b8c45a 0%, #9ad060 100%)';
+      }
+      // 接近中午 (9:30-10:00)
+      else if (timeValue < 10) {
+        gradient = 'linear-gradient(135deg, #9ad060 0%, #78d870 100%)';
+      }
+      // 上午晚 (10:00-10:30)
+      else if (timeValue < 10.5) {
+        gradient = 'linear-gradient(135deg, #78d870 0%, #5ae080 100%)';
+      }
+      // 接近正午 (10:30-11:00)
+      else if (timeValue < 11) {
+        gradient = 'linear-gradient(135deg, #5ae080 0%, #48e890 100%)';
+      }
+      // 正午前 (11:00-11:30)
+      else if (timeValue < 11.5) {
+        gradient = 'linear-gradient(135deg, #48e890 0%, #40e8a0 100%)';
+      }
+      // 正午 (11:30-12:00)
+      else if (timeValue < 12) {
+        gradient = 'linear-gradient(135deg, #40e8a0 0%, #38e8b0 100%)';
+      }
+      // 中午 (12:00-12:30)
+      else if (timeValue < 12.5) {
+        gradient = 'linear-gradient(135deg, #38e8b0 0%, #35e0c0 100%)';
+      }
+      // 午后 (12:30-13:00)
+      else if (timeValue < 13) {
+        gradient = 'linear-gradient(135deg, #35e0c0 0%, #38d8d0 100%)';
+      }
+      // 下午初 (13:00-13:30)
+      else if (timeValue < 13.5) {
+        gradient = 'linear-gradient(135deg, #38d8d0 0%, #40c8d8 100%)';
+      }
+      // 下午 (13:30-14:00)
+      else if (timeValue < 14) {
+        gradient = 'linear-gradient(135deg, #40c8d8 0%, #48b8e0 100%)';
+      }
+      // 下午中段 (14:00-14:30)
+      else if (timeValue < 14.5) {
+        gradient = 'linear-gradient(135deg, #48b8e0 0%, #50a8e8 100%)';
+      }
+      // 下午晚段 (14:30-15:00)
+      else if (timeValue < 15) {
+        gradient = 'linear-gradient(135deg, #50a8e8 0%, #5898f0 100%)';
+      }
+      // 下午到傍晚过渡 (15:00-15:30)
+      else if (timeValue < 15.5) {
+        gradient = 'linear-gradient(135deg, #5898f0 0%, #6088e8 100%)';
+      }
+      // 傍晚初 (15:30-16:00)
+      else if (timeValue < 16) {
+        gradient = 'linear-gradient(135deg, #6088e8 0%, #6878e0 100%)';
+      }
+      // 傍晚 (16:00-16:30)
+      else if (timeValue < 16.5) {
+        gradient = 'linear-gradient(135deg, #6878e0 0%, #7068d8 100%)';
+      }
+      // 傍晚到黄昏过渡 (16:30-17:00)
+      else if (timeValue < 17) {
+        gradient = 'linear-gradient(135deg, #7068d8 0%, #7858d0 100%)';
+      }
+      // 黄昏初 (17:00-17:30)
+      else if (timeValue < 17.5) {
+        gradient = 'linear-gradient(135deg, #7858d0 0%, #8850c0 100%)';
+      }
+      // 黄昏 (17:30-18:00)
+      else if (timeValue < 18) {
+        gradient = 'linear-gradient(135deg, #8850c0 0%, #9848b0 100%)';
+      }
+      // 日落前 (18:00-18:30)
+      else if (timeValue < 18.5) {
+        gradient = 'linear-gradient(135deg, #9848b0 0%, #a840a0 100%)';
+      }
+      // 日落 (18:30-19:00)
+      else if (timeValue < 19) {
+        gradient = 'linear-gradient(135deg, #a840a0 0%, #b83890 100%)';
+      }
+      // 傍晚夜色 (19:00-19:30)
+      else if (timeValue < 19.5) {
+        gradient = 'linear-gradient(135deg, #b83890 0%, #a03080 100%)';
+      }
+      // 夜晚初 (19:30-20:00)
+      else if (timeValue < 20) {
+        gradient = 'linear-gradient(135deg, #a03080 0%, #882870 100%)';
+      }
+      // 夜晚 (20:00-20:30)
+      else if (timeValue < 20.5) {
+        gradient = 'linear-gradient(135deg, #882870 0%, #702060 100%)';
+      }
+      // 深夜初 (20:30-21:00)
+      else if (timeValue < 21) {
+        gradient = 'linear-gradient(135deg, #702060 0%, #581850 100%)';
+      }
+      // 深夜 (21:00-21:30)
+      else if (timeValue < 21.5) {
+        gradient = 'linear-gradient(135deg, #581850 0%, #481440 100%)';
+      }
+      // 深夜中段 (21:30-22:00)
+      else if (timeValue < 22) {
+        gradient = 'linear-gradient(135deg, #481440 0%, #381030 100%)';
+      }
+      // 深夜晚段 (22:00-22:30)
+      else if (timeValue < 22.5) {
+        gradient = 'linear-gradient(135deg, #381030 0%, #2d0c28 100%)';
+      }
+      // 午夜前 (22:30-23:00)
+      else if (timeValue < 23) {
+        gradient = 'linear-gradient(135deg, #2d0c28 0%, #220820 100%)';
+      }
+      // 午夜 (23:00-23:30)
+      else if (timeValue < 23.5) {
+        gradient = 'linear-gradient(135deg, #220820 0%, #1a0618 100%)';
+      }
+      // 午夜后 (23:30-24:00)
+      else {
+        gradient = 'linear-gradient(135deg, #1a0618 0%, #1a0f2e 100%)';
+      }
+      
+      document.body.style.background = gradient;
+    }
+
+    // 初始化
+    updateBackground();
+
+    // 每30分钟更新一次背景色
+    setInterval(updateBackground, 1800000); // 30分钟 = 1800000毫秒
+
+    // 暴露配置接口(与项目其他壁纸保持一致)
+    window.setWallpaperConfig = function(config) {
+      // 可以在这里添加自定义配置
+      console.log('Wallpaper config updated:', config);
+    };
+  </script>
+</body>
+</html>
