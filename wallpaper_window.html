@@ -365,10 +365,19 @@ function updateTime() {
 
 // ===== Canvas 静态绘制（单帧GPU合成） =====
 function drawSceneToCanvas() {
-  if (!canvas || !ctx) return;
-  const w = window.innerWidth || 1920;
-  const h = window.innerHeight || 1080;
-  canvas.width = w; canvas.height = h;
+  if (!canvas || !ctx) {
+    console.warn('[天际流光] drawSceneToCanvas: canvas or ctx missing');
+    return;
+  }
+  const w = Math.ceil(window.innerWidth || 1920);
+  const h = Math.ceil(window.innerHeight || 1080);
+  // 仅在尺寸真正变化时才重置 canvas，避免无意义的 GPU 纹理重新分配
+  if (canvas.width !== w || canvas.height !== h) {
+    console.log('[天际流光] drawSceneToCanvas: resizing canvas ' + canvas.width + 'x' + canvas.height + ' -> ' + w + 'x' + h);
+    canvas.width = w; canvas.height = h;
+  } else {
+    console.log('[天际流光] drawSceneToCanvas: reusing canvas ' + w + 'x' + h);
+  }
 
   const s = getComputedStyle(document.documentElement);
   const top = s.getPropertyValue('--sky-top').trim() || '#050818';
@@ -482,20 +491,51 @@ function drawSceneToCanvas() {
 }
 
 function enterStaticMode() {
+  if (staticMode) {
+    console.log('[天际流光] enterStaticMode: already in static mode, skipped');
+    return;
+  }
   staticMode = true;
-  if (!canvas || !ctx) return;
-  drawSceneToCanvas();
-  canvas.style.display = 'block';
-  document.getElementById('infoText').style.display = 'none';
+  console.log('[天际流光] enterStaticMode: switching to static canvas mode');
+  // 隐藏 DOM scene 以彻底消除 GPU 合成开销
+  const scene = document.querySelector('.scene');
+  if (scene) {
+    scene.style.display = 'none';
+    console.log('[天际流光] enterStaticMode: .scene display=none');
+  }
+  if (canvas && ctx) {
+    drawSceneToCanvas();
+    canvas.style.display = 'block';
+    console.log('[天际流光] enterStaticMode: canvas drawn and shown');
+  } else {
+    console.warn('[天际流光] enterStaticMode: canvas or ctx missing');
+  }
+  const infoText = document.getElementById('infoText');
+  if (infoText) infoText.style.display = 'none';
 }
 
 function exitStaticMode() {
+  if (!staticMode) {
+    console.log('[天际流光] exitStaticMode: already in dynamic mode, skipped');
+    return;
+  }
   staticMode = false;
-  if (canvas) canvas.style.display = 'none';
-  document.getElementById('infoText').style.display = 'block';
+  console.log('[天际流光] exitStaticMode: switching to dynamic DOM mode');
+  const scene = document.querySelector('.scene');
+  if (scene) {
+    scene.style.display = 'block';
+    console.log('[天际流光] exitStaticMode: .scene display=block');
+  }
+  if (canvas) {
+    canvas.style.display = 'none';
+    console.log('[天际流光] exitStaticMode: canvas hidden');
+  }
+  const infoText = document.getElementById('infoText');
+  if (infoText) infoText.style.display = 'block';
 }
 
 window.setStaticMode = function(enabled) {
+  console.log('[天际流光] setStaticMode called, enabled=' + enabled + ', current staticMode=' + staticMode);
   enabled ? enterStaticMode() : exitStaticMode();
 };
 
@@ -509,7 +549,11 @@ window.setWeatherData = function(data) {
 };
 
 window.setWallpaperConfig = function(config) {
-  if (!config) return;
+  if (!config) {
+    console.warn('[天际流光] setWallpaperConfig: config is null');
+    return;
+  }
+  console.log('[天际流光] setWallpaperConfig received:', JSON.stringify(config));
   if (config.useRealTime !== undefined) useRealTime = config.useRealTime;
   if (config.simTime !== undefined) simTime = config.simTime;
   if (config.simMonth !== undefined) simMonth = config.simMonth;
@@ -521,6 +565,7 @@ window.setWallpaperConfig = function(config) {
     config.staticMode ? enterStaticMode() : exitStaticMode();
   }
   updateTime();
+  console.log('[天际流光] setWallpaperConfig done, staticMode=' + staticMode);
 };
 
 // ===== 初始化 =====
@@ -528,7 +573,13 @@ updateTime();
 // 每5分钟检查一次时段变化（降低定时器频率）
 setInterval(updateTime, 300000);
 
-console.log('[天际流光] 已初始化');
+// 若标记为静态壁纸，自动进入静态模式（防止 WebView 进程崩溃恢复后状态丢失）
+if (window.__wallpaperStatic) {
+  console.log('[天际流光] 检测到静态壁纸标记，自动进入静态模式');
+  enterStaticMode();
+}
+
+console.log('[天际流光] 已初始化, staticMode=' + staticMode);
 </script>
 </body>
 </html>

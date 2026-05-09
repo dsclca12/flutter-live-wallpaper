@@ -78,18 +78,19 @@ class _WallpaperPreviewState extends State<WallpaperPreview> {
 
   void _sendConfig(Map<String, dynamic> config) {
     final json = jsonEncode(config);
+    debugPrint('[WallpaperPreview] sending config: $json');
     // 转义单引号防止 JS 字符串断裂
     final escapedJson = json.replaceAll("'", "\\'");
     final controller = _controller;
     if (controller is WebviewController) {
       // Windows WebView2
       final script =
-          'try{if(window.setWallpaperConfig){window.setWallpaperConfig(JSON.parse(\'$escapedJson\'));}}catch(e){console.error(e);}';
+          'try{console.log("[Dart->JS] config received");if(window.setWallpaperConfig){window.setWallpaperConfig(JSON.parse(\'$escapedJson\'));}else{console.warn("[Dart->JS] setWallpaperConfig not found");}}catch(e){console.error("[Dart->JS] error:",e);}';
       unawaited(controller.executeScript(script));
     } else if (controller is WebViewController) {
       // Android WebView
       final script =
-          'try{if(window.setWallpaperConfig){window.setWallpaperConfig(JSON.parse(\'$escapedJson\'));}}catch(e){console.error(e);}';
+          'try{console.log("[Dart->JS] config received");if(window.setWallpaperConfig){window.setWallpaperConfig(JSON.parse(\'$escapedJson\'));}else{console.warn("[Dart->JS] setWallpaperConfig not found");}}catch(e){console.error("[Dart->JS] error:",e);}';
       unawaited(controller.runJavaScript(script));
     }
   }

@@ -1425,6 +1425,8 @@ class _WallpaperModePageState extends State<WallpaperModePage> {
 
   // 桌面壁纸模式默认启用静态Canvas，最大限度降低GPU占用
   late final ValueNotifier<Map<String, dynamic>> _configNotifier;
+  // 定时刷新 staticMode，防止 WebView 崩溃/重启后状态丢失
+  Timer? _staticModeRefresher;
 
   @override
   void initState() {
@@ -1436,6 +1438,17 @@ class _WallpaperModePageState extends State<WallpaperModePage> {
     _attachedStatePoller = Timer.periodic(
       const Duration(seconds: 1),
       (_) => unawaited(_refreshAttachedState()),
+    );
+    // 每 30 秒重新发送 staticMode=true，作为 WebView 崩溃恢复后的保险
+    _staticModeRefresher = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) {
+        if (_isAttached && mounted) {
+          debugPrint('[WallpaperMode] refreshing staticMode=true');
+          _configNotifier.value = Map<String, dynamic>.from(_configNotifier.value)
+            ..['staticMode'] = true;
+        }
+      },
     );
   }
 
@@ -1489,6 +1502,7 @@ class _WallpaperModePageState extends State<WallpaperModePage> {
   @override
   void dispose() {
     _attachedStatePoller?.cancel();
+    _staticModeRefresher?.cancel();
     _configNotifier.dispose();
     if (_isAttached) {
       unawaited(DesktopWallpaperBridge.detachFromDesktop());
