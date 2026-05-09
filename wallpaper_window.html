@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>窗景时光</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    /* 时段天空色板 */
+    --sky-top: #0a0e27; --sky-mid: #0f1238; --sky-bottom: #1a1f4b; --horizon: #1a1f4b;
+    --ambient: transparent;
+    --stars-opacity: 0; --distant-opacity: 0.6;
+    /* 天气 */
+    --cloud-opacity: 0; --rain-opacity: 0; --snow-opacity: 0;
+    --fog-opacity: 0; --frost-opacity: 0; --heat-opacity: 0;
+    --weather-overlay-opacity: 0; --weather-overlay-color: #888;
+    --glass-reflect: rgba(255,255,255,0.08);
+    /* 性能：所有过渡统一2.5秒 */
+    --transition-speed: 2.5s;
+  }
+
+  html, body { width: 100vw; height: 100vh; overflow: hidden; background: #000; }
+
+  /* 所有层放在同一个容器内，使用 absolute 而非 fixed，减少合成层 */
+  .scene { position: absolute; inset: 0; }
+
+  /* ===== 天空 ===== */
+  .sky {
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 40%, var(--sky-bottom) 70%, var(--horizon) 100%);
+    transition: background var(--transition-speed) ease-in-out;
+    z-index: 1;
+  }
+
+  /* 环境光晕 */
+  .ambient-glow {
+    position: absolute; inset: 0;
+    background: var(--ambient);
+    transition: background var(--transition-speed) ease-in-out;
+    pointer-events: none; z-index: 2;
+  }
+
+  /* ===== 星辰（静态CSS点阵，无动画） ===== */
+  .stars {
+    position: absolute; inset: 0;
+    opacity: var(--stars-opacity);
+    transition: opacity var(--transition-speed) ease;
+    pointer-events: none; z-index: 3;
+    background-image:
+      radial-gradient(1.5px 1.5px at 12% 15%, rgba(255,255,255,0.9), transparent),
+      radial-gradient(1px 1px at 25% 8%, rgba(255,255,255,0.7), transparent),
+      radial-gradient(1.5px 1.5px at 38% 22%, rgba(255,255,255,0.85), transparent),
+      radial-gradient(1px 1px at 48% 12%, rgba(255,255,255,0.6), transparent),
+      radial-gradient(1.5px 1.5px at 58% 28%, rgba(255,255,255,0.8), transparent),
+      radial-gradient(1px 1px at 68% 10%, rgba(255,255,255,0.7), transparent),
+      radial-gradient(1.5px 1.5px at 78% 20%, rgba(255,255,255,0.9), transparent),
+      radial-gradient(1px 1px at 85% 14%, rgba(255,255,255,0.65), transparent),
+      radial-gradient(1.5px 1.5px at 92% 25%, rgba(255,255,255,0.8), transparent),
+      radial-gradient(1px 1px at 8% 35%, rgba(255,255,255,0.5), transparent),
+      radial-gradient(1.5px 1.5px at 18% 42%, rgba(255,255,255,0.75), transparent),
+      radial-gradient(1px 1px at 32% 38%, rgba(255,255,255,0.6), transparent),
+      radial-gradient(1.5px 1.5px at 45% 48%, rgba(255,255,255,0.85), transparent),
+      radial-gradient(1px 1px at 55% 40%, rgba(255,255,255,0.55), transparent),
+      radial-gradient(1.5px 1.5px at 65% 52%, rgba(255,255,255,0.7), transparent),
+      radial-gradient(1px 1px at 72% 38%, rgba(255,255,255,0.5), transparent),
+      radial-gradient(1.5px 1.5px at 82% 45%, rgba(255,255,255,0.8), transparent),
+      radial-gradient(1px 1px at 90% 50%, rgba(255,255,255,0.6), transparent),
+      radial-gradient(2px 2px at 15% 60%, rgba(255,255,255,0.9), transparent),
+      radial-gradient(1.5px 1.5px at 28% 68%, rgba(255,255,255,0.7), transparent),
+      radial-gradient(1px 1px at 42% 62%, rgba(255,255,255,0.55), transparent),
+      radial-gradient(1.5px 1.5px at 52% 72%, rgba(255,255,255,0.75), transparent),
+      radial-gradient(1px 1px at 62% 65%, rgba(255,255,255,0.5), transparent),
+      radial-gradient(1.5px 1.5px at 75% 70%, rgba(255,255,255,0.8), transparent),
+      radial-gradient(1px 1px at 88% 62%, rgba(255,255,255,0.6), transparent);
+  }
+
+  /* ===== 云层（纯CSS渐变，无filter blur） ===== */
+  .cloud-layer {
+    position: absolute; inset: 0;
+    opacity: var(--cloud-opacity);
+    transition: opacity var(--transition-speed) ease;
+    pointer-events: none; z-index: 4;
+    /* 用大面积低透明度radial-gradient模拟云层，避免filter blur的GPU开销 */
+    background:
+      radial-gradient(ellipse 70% 35% at 25% 22%, rgba(220,225,235,0.12) 0%, transparent 80%),
+      radial-gradient(ellipse 60% 30% at 72% 28%, rgba(215,220,230,0.1) 0%, transparent 80%),
+      radial-gradient(ellipse 50% 25% at 50% 18%, rgba(210,215,225,0.08) 0%, transparent 80%);
+  }
+
+  /* ===== 远景（静态SVG，无filter brightness，改用opacity控制亮度感） ===== */
+  .landscape {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 22%;
+    opacity: var(--distant-opacity);
+    transition: opacity var(--transition-speed) ease;
+    pointer-events: none; z-index: 5;
+  }
+  .landscape svg { width: 100%; height: 100%; display: block; }
+
+  /* ===== 窗沿积雪 ===== */
+  .snow-ledge {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 3.5%;
+    background: linear-gradient(to top, rgba(240,245,255,0.9) 0%, rgba(240,245,255,0.4) 60%, transparent 100%);
+    opacity: var(--snow-opacity);
+    transition: opacity var(--transition-speed) ease;
+    pointer-events: none; z-index: 6;
+  }
+
+  /* ===== 雨滴纹理（静态SVG背景图） ===== */
+  .rain-texture {
+    position: absolute; inset: 0;
+    opacity: var(--rain-opacity);
+    transition: opacity var(--transition-speed) ease;
+    pointer-events: none; z-index: 7;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='120'%3E%3Cline x1='30' y1='10' x2='28' y2='35' stroke='rgba(180,200,230,0.35)' stroke-width='1.2' stroke-linecap='round'/%3E%3Cline x1='55' y1='45' x2='53' y2='70' stroke='rgba(180,200,230,0.3)' stroke-width='1' stroke-linecap='round'/%3E%3Cline x1='12' y1='80' x2='11' y2='100' stroke='rgba(180,200,230,0.25)' stroke-width='0.8' stroke-linecap='round'/%3E%3Cline x1='68' y1='15' x2='67' y2='38' stroke='rgba(180,200,230,0.2)' stroke-width='0.8' stroke-linecap='round'/%3E%3Cline x1='42' y1='65' x2='41' y2='88' stroke='rgba(180,200,230,0.28)' stroke-width='1' stroke-linecap='round'/%3E%3C/svg%3E");
+  }
+
+  /* ===== 窗台积水反光 ===== */
+  .puddle-glow {
+    position: absolute; bottom: 0; left: 10%; right: 10%; height: 2%;
+    background: radial-gradient(ellipse at center, rgba(180,200,255,0.25) 0%, transparent 70%);
+    opacity: var(--rain-opacity);
+    transition: opacity var(--transition-speed) ease;
+    pointer-events: none; z-index: 8;
+  }
+
+  /* ===== 雾层（纯色渐变，无mix-blend-mode） ===== */
+  .fog-layer {
+    position: absolute; inset: 0;
+    opacity: var(--fog-opacity);
+    transition: opacity var(--transition-speed) ease;
+    pointer-events: none; z-index: 9;
+    background: linear-gradient(180deg, rgba(240,242,245,0.7) 0%, rgba(230,233,238,0.5) 40%, rgba(220,225,232,0.3) 70%, rgba(210,218,228,0.15) 100%);
+  }
+
+  /* ===== 霜花（静态SVG pattern） ===== */
+  .frost-layer {
+    position: absolute; inset: 0;
+    opacity: var(--frost-opacity);
+    transition: opacity var(--transition-speed) ease;
+    pointer-events: none; z-index: 10;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cpath d='M60 0 L60 20 M60 40 L60 60 M60 80 L60 120 M0 60 L20 60 M40 60 L60 60 M80 60 L120 60 M18 18 L30 30 M90 90 L102 102 M18 102 L30 90 M90 30 L102 18' stroke='rgba(255,255,255,0.12)' stroke-width='0.6' fill='none'/%3E%3Ccircle cx='60' cy='60' r='15' stroke='rgba(255,255,255,0.08)' stroke-width='0.5' fill='none'/%3E%3Ccircle cx='60' cy='60' r='28' stroke='rgba(255,255,255,0.05)' stroke-width='0.4' fill='none'/%3E%3C/svg%3E");
+  }
+
+  /* ===== 热浪（纯色渐变） ===== */
+  .heat-layer {
+    position: absolute; inset: 0;
+    opacity: var(--heat-opacity);
+    transition: opacity var(--transition-speed) ease;
+    pointer-events: none; z-index: 11;
+    background:
+      radial-gradient(ellipse 40% 30% at 30% 40%, rgba(255,200,100,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse 35% 25% at 70% 55%, rgba(255,180,80,0.06) 0%, transparent 60%);
+  }
+
+  /* ===== 天气遮罩（纯色覆盖，无mix-blend-mode，用opacity模拟混合） ===== */
+  .weather-overlay {
+    position: absolute; inset: 0;
+    opacity: var(--weather-overlay-opacity);
+    transition: opacity var(--transition-speed) ease;
+    pointer-events: none; z-index: 12;
+    background: var(--weather-overlay-color);
+    /* mix-blend-mode已移除 — 会导致WebView持续GPU合成 */
+  }
+
+  /* ===== 玻璃层（纯CSS渐变，无backdrop-filter） ===== */
+  .glass-pane {
+    position: absolute; inset: 0;
+    z-index: 13; pointer-events: none;
+    background:
+      linear-gradient(135deg, rgba(255,255,255,0.06) 0%, transparent 35%, transparent 65%, rgba(255,255,255,0.04) 100%),
+      linear-gradient(180deg, var(--glass-reflect) 0%, transparent 15%, transparent 85%, rgba(255,255,255,0.02) 100%);
+    border: 1px solid rgba(255,255,255,0.04);
+    box-shadow: inset 0 0 60px rgba(255,255,255,0.02);
+    transition: background var(--transition-speed) ease;
+  }
+
+  /* ===== 拟态窗框（简化box-shadow数量） ===== */
+  .window-frame {
+    position: absolute; inset: 0;
+    z-index: 20; pointer-events: none;
+    border: 28px solid transparent;
+    box-shadow:
+      inset 0 0 0 1px rgba(255,255,255,0.06),
+      inset 0 0 0 2px rgba(0,0,0,0.3),
+      inset 8px 8px 16px rgba(0,0,0,0.45),
+      inset -4px -4px 12px rgba(255,255,255,0.04),
+      0 0 0 1px rgba(0,0,0,0.4),
+      0 12px 40px rgba(0,0,0,0.5);
+  }
+  .window-frame::before {
+    content: ''; position: absolute; top: 0; left: 50%;
+    width: 12px; height: 100%; margin-left: -6px;
+    background: linear-gradient(90deg, rgba(0,0,0,0.35) 0%, rgba(20,20,25,0.8) 20%, rgba(40,42,48,0.9) 50%, rgba(20,20,25,0.8) 80%, rgba(0,0,0,0.35) 100%);
+    box-shadow: inset 2px 0 4px rgba(0,0,0,0.5), inset -1px 0 2px rgba(255,255,255,0.04), 2px 0 6px rgba(0,0,0,0.3);
+  }
+  .window-frame::after {
+    content: ''; position: absolute; top: 50%; left: 0;
+    width: 100%; height: 12px; margin-top: -6px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(20,20,25,0.8) 20%, rgba(40,42,48,0.9) 50%, rgba(20,20,25,0.8) 80%, rgba(0,0,0,0.35) 100%);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.5), inset 0 -1px 2px rgba(255,255,255,0.04), 0 2px 6px rgba(0,0,0,0.3);
+  }
+
+  /* ===== 窗台 ===== */
+  .windowsill {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: 32px; z-index: 21; pointer-events: none;
+    background: linear-gradient(180deg, rgba(30,32,38,0.95) 0%, rgba(22,24,30,0.98) 50%, rgba(15,17,22,1) 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 -2px 8px rgba(0,0,0,0.4);
+  }
+
+  /* ===== 信息文字 ===== */
+  .info-text {
+    position: absolute; bottom: 48px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 22; pointer-events: none;
+    text-align: center; opacity: 0.65;
+    transition: opacity var(--transition-speed) ease;
+  }
+  .info-text .period-name {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 14px; font-weight: 500;
+    color: rgba(255,255,255,0.6);
+    letter-spacing: 2px; text-transform: uppercase;
+  }
+  .info-text .weather-hint {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 11px;
+    color: rgba(255,255,255,0.35);
+    margin-top: 3px; letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+
+<div class="scene">
+  <!-- z-index 1-5: 天空/星辰/云/远景 -->
+  <div class="sky"></div>
+  <div class="ambient-glow"></div>
+  <div class="stars"></div>
+  <div class="cloud-layer"></div>
+  <div class="landscape">
+    <svg viewBox="0 0 1920 200" preserveAspectRatio="none">
+      <path d="M0,200 L0,110 Q80,80 160,100 Q240,70 320,95 Q400,60 480,85 Q560,50 640,80 Q720,55 800,75 Q880,45 960,70 Q1040,50 1120,72 Q1200,48 1280,68 Q1360,52 1440,70 Q1520,55 1600,75 Q1680,60 1760,80 Q1840,65 1920,85 L1920,200 Z" fill="#0d1020" opacity="0.5"/>
+      <path d="M0,200 L0,135 Q60,115 120,130 Q180,105 240,125 Q300,100 360,120 Q420,95 480,115 Q540,92 600,110 Q660,88 720,105 Q780,85 840,100 Q900,82 960,95 Q1020,78 1080,92 Q1140,75 1200,88 Q1260,72 1320,85 Q1380,68 1440,80 Q1500,65 1560,78 Q1620,62 1680,75 Q1740,58 1800,70 Q1860,55 1920,68 L1920,200 Z" fill="#12152a" opacity="0.7"/>
+      <path d="M0,200 L0,155 Q50,145 100,158 Q150,142 200,155 Q250,148 300,160 Q350,152 400,162 Q450,155 500,165 Q550,158 600,168 Q650,160 700,170 Q750,162 800,172 Q850,165 900,175 Q950,168 1000,178 Q1050,170 1100,180 Q1150,172 1200,182 Q1250,175 1300,185 Q1350,178 1400,188 Q1450,180 1500,190 Q1550,182 1600,192 Q1650,185 1700,195 Q1750,188 1800,198 Q1850,190 1920,200 L1920,200 Z" fill="#181b32" opacity="0.85"/>
+    </svg>
+  </div>
+
+  <!-- z-index 6-12: 天气效果 -->
+  <div class="snow-ledge"></div>
+  <div class="rain-texture"></div>
+  <div class="puddle-glow"></div>
+  <div class="fog-layer"></div>
+  <div class="frost-layer"></div>
+  <div class="heat-layer"></div>
+  <div class="weather-overlay"></div>
+
+  <!-- z-index 13: 玻璃 -->
+  <div class="glass-pane"></div>
+
+  <!-- z-index 20-21: 窗框 -->
+  <div class="window-frame"></div>
+  <div class="windowsill"></div>
+</div>
+
+<!-- 静态Canvas模式（GPU零开销） -->
+<canvas id="staticCanvas" style="position:absolute;inset:0;width:100%;height:100%;z-index:99;display:none;"></canvas>
+
+<!-- z-index 22: 信息文字（在scene外，避免被窗框裁剪） -->
+<div class="info-text" id="infoText">
+  <div class="period-name" id="periodName">深夜</div>
+  <div class="weather-hint" id="weatherHint"></div>
+</div>
+
+<script>
+'use strict';
+
+// ===== 静态壁纸标记 =====
+window.__wallpaperStatic = true;
+
+// ===== 性能诊断日志系统 =====
+const perfLog = [];
+function logPerf(msg) {
+  const entry = `[${new Date().toISOString()}] ${msg}`;
+  perfLog.push(entry);
+  console.log('[窗景时光]', entry);
+}
+
+// 检测是否有CSS动画在运行
+function checkCSSAnimations() {
+  const sheets = document.styleSheets;
+  let animCount = 0;
+  try {
+    for (const sheet of sheets) {
+      for (const rule of sheet.cssRules || []) {
+        if (rule.type === CSSRule.KEYFRAMES_RULE) animCount++;
+      }
+    }
+  } catch(e) {}
+  logPerf(`CSS keyframes 数量: ${animCount} (应为0)`);
+  return animCount;
+}
+
+// 检测是否有rAF意外运行
+let rafCheckCount = 0;
+const origRAF = window.requestAnimationFrame;
+window.requestAnimationFrame = function(cb) {
+  rafCheckCount++;
+  if (rafCheckCount <= 3) {
+    logPerf(`⚠️ requestAnimationFrame 被调用 (第${rafCheckCount}次)`);
+  }
+  return origRAF.call(window, cb);
+};
+
+// 检测合成层数量（近似）
+function countCompositingLayers() {
+  const all = document.querySelectorAll('*');
+  let layers = 0;
+  for (const el of all) {
+    const s = getComputedStyle(el);
+    if (s.position === 'fixed' || s.position === 'sticky') layers++;
+    else if (s.transform !== 'none') layers++;
+    else if (s.willChange !== 'auto') layers++;
+    else if (s.opacity !== '1') layers++;
+    else if (s.filter && s.filter !== 'none') layers++;
+    else if (s.backdropFilter && s.backdropFilter !== 'none') layers++;
+    else if (s.mixBlendMode !== 'normal') layers++;
+  }
+  logPerf(`近似合成层数量: ${layers} (目标: <20)`);
+  return layers;
+}
+
+// ===== 24小时调色板 =====
+const timePalettes = {
+  night:     { top:'#050818', mid:'#080d24', bottom:'#0a0e27', horizon:'#101535',
+               ambient:'radial-gradient(ellipse at 50% 30%, rgba(40,50,120,0.15) 0%, transparent 60%)', stars:0.85, distantOp:0.35 },
+  dawnPre:   { top:'#0a0e27', mid:'#12183a', bottom:'#1a1f4b', horizon:'#252a5e',
+               ambient:'radial-gradient(ellipse at 50% 40%, rgba(60,50,120,0.2) 0%, transparent 60%)', stars:0.5, distantOp:0.4 },
+  sunrise:   { top:'#1a1f4b', mid:'#3d2d5a', bottom:'#6b3a3a', horizon:'#c4784a',
+               ambient:'radial-gradient(ellipse at 50% 55%, rgba(220,140,80,0.25) 0%, transparent 50%)', stars:0, distantOp:0.55 },
+  morning:   { top:'#3a6fa0', mid:'#5a9fd4', bottom:'#87ceeb', horizon:'#a8d5e5',
+               ambient:'radial-gradient(ellipse at 50% 30%, rgba(150,200,255,0.15) 0%, transparent 60%)', stars:0, distantOp:0.7 },
+  noon:      { top:'#2d6ab0', mid:'#4a90d9', bottom:'#87ceeb', horizon:'#b8d4e3',
+               ambient:'radial-gradient(ellipse at 50% 25%, rgba(180,220,255,0.18) 0%, transparent 55%)', stars:0, distantOp:0.85 },
+  afternoon: { top:'#3a7ab8', mid:'#5a9fd4', bottom:'#a8cfe0', horizon:'#c8dce8',
+               ambient:'radial-gradient(ellipse at 50% 30%, rgba(160,200,240,0.12) 0%, transparent 60%)', stars:0, distantOp:0.8 },
+  sunset:    { top:'#3a3a70', mid:'#7a4a60', bottom:'#d4a373', horizon:'#e8b88a',
+               ambient:'radial-gradient(ellipse at 50% 55%, rgba(240,160,100,0.2) 0%, transparent 50%)', stars:0, distantOp:0.6 },
+  dusk:      { top:'#1e1e45', mid:'#3d3561', bottom:'#5e4b8b', horizon:'#4a3a6e',
+               ambient:'radial-gradient(ellipse at 50% 45%, rgba(100,80,150,0.15) 0%, transparent 60%)', stars:0.25, distantOp:0.45 },
+  evening:   { top:'#0f1238', mid:'#181b3a', bottom:'#2d3561', horizon:'#1f2548',
+               ambient:'radial-gradient(ellipse at 50% 35%, rgba(50,50,120,0.1) 0%, transparent 60%)', stars:0.6, distantOp:0.35 },
+};
+
+const periodNames = {
+  night:'深夜', dawnPre:'黎明前', sunrise:'日出', morning:'上午',
+  noon:'正午', afternoon:'下午', sunset:'日落', dusk:'黄昏', evening:'夜晚'
+};
+
+function getPeriod(hour) {
+  if (hour >= 0  && hour < 4)  return 'night';
+  if (hour >= 4  && hour < 6)  return 'dawnPre';
+  if (hour >= 6  && hour < 8)  return 'sunrise';
+  if (hour >= 8  && hour < 11) return 'morning';
+  if (hour >= 11 && hour < 14) return 'noon';
+  if (hour >= 14 && hour < 17) return 'afternoon';
+  if (hour >= 17 && hour < 19) return 'sunset';
+  if (hour >= 19 && hour < 21) return 'dusk';
+  return 'evening';
+}
+
+const weatherConfigs = {
+  sunny:  { satMult:1, lightMult:1,   cloudOp:0,   rainOp:0,   snowOp:0,   fogOp:0,   frostOp:0,   heatOp:0,   overlayOp:0,   overlayColor:'transparent', glassReflect:'rgba(255,255,255,0.08)', distantBright:1 },
+  cloudy: { satMult:0.65, lightMult:0.85, cloudOp:0.45, rainOp:0,   snowOp:0,   fogOp:0,   frostOp:0,   heatOp:0,   overlayOp:0.15, overlayColor:'rgba(160,168,176,0.35)', glassReflect:'rgba(255,255,255,0.05)', distantBright:0.75 },
+  rain:   { satMult:0.75, lightMult:0.75, cloudOp:0.6,  rainOp:0.65, snowOp:0,   fogOp:0,   frostOp:0,   heatOp:0,   overlayOp:0.2,  overlayColor:'rgba(112,128,144,0.4)',  glassReflect:'rgba(200,210,230,0.06)', distantBright:0.55 },
+  snow:   { satMult:0.8, lightMult:1.1,  cloudOp:0.35, rainOp:0,   snowOp:0.9,  fogOp:0,   frostOp:0.3, heatOp:0,   overlayOp:0.1,  overlayColor:'rgba(208,216,232,0.3)',  glassReflect:'rgba(230,240,255,0.1)',  distantBright:1.15 },
+  fog:    { satMult:0.5, lightMult:0.9,  cloudOp:0.25, rainOp:0,   snowOp:0,   fogOp:0.7, frostOp:0,   heatOp:0,   overlayOp:0.3,  overlayColor:'rgba(192,200,208,0.5)',  glassReflect:'rgba(255,255,255,0.03)', distantBright:0.3 },
+};
+
+let useRealTime = true, simTime = 12, simMonth = 5;
+let weatherCondition = 'sunny', temperature = 20, humidity = 50;
+let currentPeriod = '';
+let applyCount = 0;
+const root = document.documentElement;
+const periodNameEl = document.getElementById('periodName');
+const weatherHintEl = document.getElementById('weatherHint');
+
+function hexToRgb(hex) {
+  const v = parseInt(hex.slice(1), 16);
+  return [v >> 16, (v >> 8) & 0xFF, v & 0xFF];
+}
+function rgbToHex([r,g,b]) {
+  return '#' + [r,g,b].map(c => Math.max(0,Math.min(255,Math.round(c))).toString(16).padStart(2,'0')).join('');
+}
+function lerpColor(a,b,t) {
+  const ar=hexToRgb(a), br=hexToRgb(b);
+  return rgbToHex(ar.map((v,i)=>v+(br[i]-v)*t));
+}
+function lerp(a,b,t){ return a+(b-a)*t; }
+
+function adjustColor(hex, satMult, lightMult) {
+  const [r,g,b] = hexToRgb(hex);
+  const avg = (r+g+b)/3;
+  const nr = avg+(r-avg)*satMult, ng = avg+(g-avg)*satMult, nb = avg+(b-avg)*satMult;
+  return rgbToHex([nr*lightMult, ng*lightMult, nb*lightMult]);
+}
+
+function applyPeriod(hour) {
+  const pNames = Object.keys(timePalettes);
+  const idx = pNames.indexOf(getPeriod(hour));
+  const nextIdx = (idx+1)%pNames.length;
+  const p1 = timePalettes[pNames[idx]];
+  const p2 = timePalettes[pNames[nextIdx]];
+
+  const periodRanges = [0,4,6,8,11,14,17,19,21,24];
+  const rangeIdx = periodRanges.findIndex((v,i,arr)=>hour>=v&&hour<(arr[i+1]||24));
+  const rangeStart = periodRanges[rangeIdx];
+  const rangeEnd = periodRanges[rangeIdx+1]||24;
+  const t = Math.min(1,Math.max(0,(hour-rangeStart)/(rangeEnd-rangeStart)));
+
+  const wc = weatherConfigs[weatherCondition] || weatherConfigs.sunny;
+
+  const top     = adjustColor(lerpColor(p1.top, p2.top, t), wc.satMult, wc.lightMult);
+  const mid     = adjustColor(lerpColor(p1.mid, p2.mid, t), wc.satMult, wc.lightMult);
+  const bottom  = adjustColor(lerpColor(p1.bottom, p2.bottom, t), wc.satMult, wc.lightMult);
+  const horizon = adjustColor(lerpColor(p1.horizon, p2.horizon, t), wc.satMult, wc.lightMult);
+
+  root.style.setProperty('--sky-top', top);
+  root.style.setProperty('--sky-mid', mid);
+  root.style.setProperty('--sky-bottom', bottom);
+  root.style.setProperty('--horizon', horizon);
+  root.style.setProperty('--ambient', p1.ambient);
+  root.style.setProperty('--stars-opacity', lerp(p1.stars, p2.stars, t));
+  root.style.setProperty('--distant-opacity', lerp(p1.distantOp, p2.distantOp, t) * wc.distantBright);
+
+  root.style.setProperty('--cloud-opacity', wc.cloudOp);
+  root.style.setProperty('--rain-opacity', wc.rainOp);
+  root.style.setProperty('--snow-opacity', wc.snowOp);
+  root.style.setProperty('--fog-opacity', wc.fogOp);
+  root.style.setProperty('--weather-overlay-opacity', wc.overlayOp);
+  root.style.setProperty('--weather-overlay-color', wc.overlayColor);
+  root.style.setProperty('--glass-reflect', wc.glassReflect);
+
+  let frostOp = wc.frostOp, heatOp = wc.heatOp;
+  if (temperature < 5) frostOp = Math.max(frostOp, 0.6+(5-temperature)*0.08);
+  if (temperature > 30) heatOp = Math.min(0.5, (temperature-30)*0.05);
+  if (humidity > 80 && temperature < 15) frostOp = Math.max(frostOp, 0.3);
+  root.style.setProperty('--frost-opacity', Math.min(1, frostOp));
+  root.style.setProperty('--heat-opacity', Math.min(1, heatOp));
+
+  const pn = periodNames[getPeriod(hour)];
+  if (periodNameEl) periodNameEl.textContent = pn;
+  if (weatherHintEl) {
+    const labels = {sunny:'晴', cloudy:'多云', rain:'雨', snow:'雪', fog:'雾'};
+    const wl = labels[weatherCondition] || '';
+    const tt = temperature !== null ? Math.round(temperature)+'°C' : '';
+    weatherHintEl.textContent = wl && tt ? wl+'  '+tt : (wl || tt);
+  }
+
+  currentPeriod = getPeriod(hour);
+  applyCount++;
+}
+
+let staticMode = false;
+const canvas = document.getElementById('staticCanvas');
+const ctx = canvas ? canvas.getContext('2d') : null;
+
+function updateTime() {
+  const now = new Date();
+  const hour = useRealTime ? now.getHours()+now.getMinutes()/60 : simTime;
+  applyPeriod(hour);
+  if (staticMode && canvas && ctx) {
+    drawSceneToCanvas();
+  }
+}
+
+// ===== Canvas 静态绘制（单帧GPU合成） =====
+function drawSceneToCanvas() {
+  if (!canvas || !ctx) return;
+  const w = window.innerWidth || 1920;
+  const h = window.innerHeight || 1080;
+  canvas.width = w; canvas.height = h;
+
+  const s = getComputedStyle(document.documentElement);
+  const top = s.getPropertyValue('--sky-top').trim() || '#050818';
+  const mid = s.getPropertyValue('--sky-mid').trim() || '#080d24';
+  const bottom = s.getPropertyValue('--sky-bottom').trim() || '#0a0e27';
+  const horizon = s.getPropertyValue('--horizon').trim() || '#101535';
+  const starsOp = parseFloat(s.getPropertyValue('--stars-opacity')) || 0;
+  const distantOp = parseFloat(s.getPropertyValue('--distant-opacity')) || 0.6;
+  const cloudOp = parseFloat(s.getPropertyValue('--cloud-opacity')) || 0;
+  const rainOp = parseFloat(s.getPropertyValue('--rain-opacity')) || 0;
+  const snowOp = parseFloat(s.getPropertyValue('--snow-opacity')) || 0;
+  const fogOp = parseFloat(s.getPropertyValue('--fog-opacity')) || 0;
+  const frostOp = parseFloat(s.getPropertyValue('--frost-opacity')) || 0;
+  const heatOp = parseFloat(s.getPropertyValue('--heat-opacity')) || 0;
+  const overlayOp = parseFloat(s.getPropertyValue('--weather-overlay-opacity')) || 0;
+
+  // 1. 天空渐变
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, top); grad.addColorStop(0.4, mid); grad.addColorStop(0.7, bottom); grad.addColorStop(1, horizon);
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
+
+  // 2. 星辰（静态随机点，复用CSS种子）
+  if (starsOp > 0) {
+    ctx.globalAlpha = starsOp;
+    const seed = [0.12,0.25,0.38,0.48,0.58,0.68,0.78,0.85,0.92,0.08,0.18,0.32,0.45,0.55,0.65,0.72,0.82,0.90,0.15,0.28,0.42,0.52,0.62,0.75,0.88];
+    for (let i = 0; i < seed.length; i++) {
+      const x = (seed[i] * w) % w;
+      const y = ((seed[i] * 1.618) % 0.8 + 0.1) * h;
+      const r = (i % 3 === 0) ? 1.5 : 1;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2);
+      ctx.fillStyle = `rgba(255,255,255,${0.5 + (i%4)*0.1})`; ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // 3. 远山（简化为三层贝塞尔曲线）
+  if (distantOp > 0) {
+    ctx.globalAlpha = distantOp * 0.5;
+    ctx.fillStyle = '#0d1020';
+    ctx.beginPath(); ctx.moveTo(0, h); ctx.lineTo(0, h*0.55);
+    for (let x = 0; x <= w; x += w/12) {
+      const y = h*0.55 - Math.abs(Math.sin(x*0.008))*h*0.08 - Math.abs(Math.sin(x*0.02))*h*0.04;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(w, h*0.55); ctx.lineTo(w, h); ctx.closePath(); ctx.fill();
+
+    ctx.globalAlpha = distantOp * 0.7;
+    ctx.fillStyle = '#12152a';
+    ctx.beginPath(); ctx.moveTo(0, h); ctx.lineTo(0, h*0.65);
+    for (let x = 0; x <= w; x += w/16) {
+      const y = h*0.65 - Math.abs(Math.sin(x*0.012))*h*0.06 - Math.abs(Math.sin(x*0.025))*h*0.03;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(w, h*0.65); ctx.lineTo(w, h); ctx.closePath(); ctx.fill();
+
+    ctx.globalAlpha = distantOp * 0.85;
+    ctx.fillStyle = '#181b32';
+    ctx.beginPath(); ctx.moveTo(0, h); ctx.lineTo(0, h*0.78);
+    for (let x = 0; x <= w; x += w/20) {
+      const y = h*0.78 - Math.abs(Math.sin(x*0.015))*h*0.04 - Math.abs(Math.sin(x*0.03))*h*0.02;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(w, h*0.78); ctx.lineTo(w, h); ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // 4. 天气覆盖层
+  if (cloudOp > 0) {
+    ctx.globalAlpha = cloudOp;
+    const g1 = ctx.createRadialGradient(w*0.25, h*0.22, 0, w*0.25, h*0.22, w*0.4);
+    g1.addColorStop(0, 'rgba(220,225,235,0.12)'); g1.addColorStop(1, 'transparent');
+    ctx.fillStyle = g1; ctx.fillRect(0, 0, w, h);
+    const g2 = ctx.createRadialGradient(w*0.72, h*0.28, 0, w*0.72, h*0.28, w*0.35);
+    g2.addColorStop(0, 'rgba(215,220,230,0.1)'); g2.addColorStop(1, 'transparent');
+    ctx.fillStyle = g2; ctx.fillRect(0, 0, w, h);
+    ctx.globalAlpha = 1;
+  }
+
+  if (fogOp > 0) {
+    ctx.globalAlpha = fogOp;
+    const fg = ctx.createLinearGradient(0, 0, 0, h);
+    fg.addColorStop(0, 'rgba(240,242,245,0.7)'); fg.addColorStop(0.4, 'rgba(230,233,238,0.5)');
+    fg.addColorStop(0.7, 'rgba(220,225,232,0.3)'); fg.addColorStop(1, 'rgba(210,218,228,0.15)');
+    ctx.fillStyle = fg; ctx.fillRect(0, 0, w, h);
+    ctx.globalAlpha = 1;
+  }
+
+  if (overlayOp > 0) {
+    ctx.globalAlpha = overlayOp;
+    ctx.fillStyle = '#708090'; ctx.fillRect(0, 0, w, h);
+    ctx.globalAlpha = 1;
+  }
+
+  // 5. 窗沿积雪
+  if (snowOp > 0) {
+    ctx.globalAlpha = snowOp;
+    const sg = ctx.createLinearGradient(0, h-h*0.035, 0, h);
+    sg.addColorStop(0, 'transparent'); sg.addColorStop(0.4, 'rgba(240,245,255,0.4)'); sg.addColorStop(1, 'rgba(240,245,255,0.9)');
+    ctx.fillStyle = sg; ctx.fillRect(0, h-h*0.035, w, h*0.035);
+    ctx.globalAlpha = 1;
+  }
+
+  // 6. 窗框（十字分隔）
+  const frameW = Math.min(w, h) * 0.025;
+  ctx.fillStyle = 'rgba(30,32,38,0.95)';
+  ctx.fillRect(0, 0, w, frameW); // 上
+  ctx.fillRect(0, h-frameW, w, frameW); // 下
+  ctx.fillRect(0, 0, frameW, h); // 左
+  ctx.fillRect(w-frameW, 0, frameW, h); // 右
+  // 十字
+  ctx.fillStyle = 'rgba(20,20,25,0.9)';
+  ctx.fillRect(w/2 - frameW*0.25, 0, frameW*0.5, h);
+  ctx.fillRect(0, h/2 - frameW*0.25, w, frameW*0.5);
+  // 窗台
+  const sillH = 32;
+  ctx.fillStyle = 'rgba(15,17,22,1)';
+  ctx.fillRect(0, h-sillH, w, sillH);
+
+  // 7. 玻璃反光（简化为渐变覆盖）
+  const gg = ctx.createLinearGradient(0, 0, w, h);
+  gg.addColorStop(0, 'rgba(255,255,255,0.06)'); gg.addColorStop(0.35, 'transparent');
+  gg.addColorStop(0.65, 'transparent'); gg.addColorStop(1, 'rgba(255,255,255,0.03)');
+  ctx.fillStyle = gg; ctx.fillRect(frameW, frameW, w-frameW*2, h-frameW-sillH);
+
+  // 8. 信息文字
+  ctx.font = '500 14px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillText(periodNameEl ? periodNameEl.textContent : '', w/2, h - 52);
+  ctx.font = '11px "Segoe UI", system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillText(weatherHintEl ? weatherHintEl.textContent : '', w/2, h - 35);
+}
+
+function enterStaticMode() {
+  staticMode = true;
+  if (!canvas || !ctx) return;
+  drawSceneToCanvas();
+  canvas.style.display = 'block';
+  document.getElementById('infoText').style.display = 'none';
+  logPerf('已进入静态Canvas模式（GPU单帧合成）');
+}
+
+function exitStaticMode() {
+  staticMode = false;
+  if (canvas) canvas.style.display = 'none';
+  document.getElementById('infoText').style.display = 'block';
+  logPerf('已退出静态Canvas模式');
+}
+
+window.setStaticMode = function(enabled) {
+  enabled ? enterStaticMode() : exitStaticMode();
+};
+
+window.setWeatherData = function(data) {
+  if (!data) return;
+  const valid = ['sunny','cloudy','rain','snow','fog'];
+  if (data.condition !== undefined) weatherCondition = valid.includes(data.condition)?data.condition:'sunny';
+  if (data.temperature !== undefined) temperature = data.temperature;
+  if (data.humidity !== undefined) humidity = data.humidity;
+  updateTime();
+};
+
+window.setWallpaperConfig = function(config) {
+  if (!config) return;
+  if (config.useRealTime !== undefined) useRealTime = config.useRealTime;
+  if (config.simTime !== undefined) simTime = config.simTime;
+  if (config.simMonth !== undefined) simMonth = config.simMonth;
+  const valid = ['sunny','cloudy','rain','snow','fog'];
+  if (config.weatherCondition !== undefined) weatherCondition = valid.includes(config.weatherCondition)?config.weatherCondition:'sunny';
+  if (config.temperature !== undefined) temperature = config.temperature;
+  if (config.humidity !== undefined) humidity = config.humidity;
+  if (config.staticMode !== undefined) {
+    config.staticMode ? enterStaticMode() : exitStaticMode();
+  }
+  updateTime();
+};
+
+// ===== 初始化 =====
+updateTime();
+setInterval(updateTime, 60000);
+
+// ===== 延迟诊断（DOM渲染完成后）=====
+setTimeout(() => {
+  logPerf('=== 性能诊断开始 ===');
+  logPerf('__wallpaperStatic = ' + window.__wallpaperStatic);
+  checkCSSAnimations();
+  const layers = countCompositingLayers();
+  logPerf('DOM元素总数: ' + document.querySelectorAll('*').length);
+  logPerf('=== 诊断结束 ===');
+  if (layers > 25) {
+    logPerf('⚠️ 合成层过多(' + layers + ')，建议进一步简化CSS');
+  }
+}, 500);
+
+// 每10秒输出一次状态摘要
+setInterval(() => {
+  logPerf(`状态: 时段=${currentPeriod}, 天气=${weatherCondition}, 渲染次数=${applyCount}, rAF调用=${rafCheckCount}`);
+}, 10000);
+
+console.log('[窗景时光] 已初始化');
+</script>
+</body>
+</html>

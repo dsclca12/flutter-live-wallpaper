@@ -24,6 +24,14 @@ class WallpaperConfig {
   final String? networkType;         // 网络类型
   final String? timestamp;           // 时间戳
 
+  // 天气模拟字段
+  final String? weatherCondition;    // 天气条件: sunny/cloudy/rain/snow/fog
+  final double? temperature;         // 温度 (°C)
+  final double? humidity;            // 湿度 0-100
+
+  // 静态Canvas模式（大幅降低GPU开销）
+  final bool staticMode;
+
   const WallpaperConfig({
     this.flowSpeed = 5.0,
     this.waveAmp = 0.7,
@@ -42,6 +50,10 @@ class WallpaperConfig {
     this.wifiIP,
     this.networkType,
     this.timestamp,
+    this.weatherCondition,
+    this.temperature,
+    this.humidity,
+    this.staticMode = false,
   });
 
   WallpaperConfig copyWith({
@@ -62,6 +74,10 @@ class WallpaperConfig {
     String? wifiIP,
     String? networkType,
     String? timestamp,
+    String? weatherCondition,
+    double? temperature,
+    double? humidity,
+    bool? staticMode,
   }) {
     return WallpaperConfig(
       flowSpeed: flowSpeed ?? this.flowSpeed,
@@ -81,6 +97,10 @@ class WallpaperConfig {
       wifiIP: wifiIP ?? this.wifiIP,
       networkType: networkType ?? this.networkType,
       timestamp: timestamp ?? this.timestamp,
+      weatherCondition: weatherCondition ?? this.weatherCondition,
+      temperature: temperature ?? this.temperature,
+      humidity: humidity ?? this.humidity,
+      staticMode: staticMode ?? this.staticMode,
     );
   }
 
@@ -106,7 +126,15 @@ class WallpaperConfig {
     if (wifiIP != null) map['wifiIP'] = wifiIP;
     if (networkType != null) map['networkType'] = networkType;
     if (timestamp != null) map['timestamp'] = timestamp;
-    
+
+    // 天气模拟
+    if (weatherCondition != null) map['weatherCondition'] = weatherCondition;
+    if (temperature != null) map['temperature'] = temperature;
+    if (humidity != null) map['humidity'] = humidity;
+
+    // 静态模式
+    map['staticMode'] = staticMode;
+
     return map;
   }
 
@@ -170,6 +198,26 @@ class WallpaperControlPanel extends StatelessWidget {
     }
   }
 
+  void _updateWeatherCondition(String value) {
+    onConfigChanged(config.copyWith(weatherCondition: value));
+    _sendMessage(config.copyWith(weatherCondition: value));
+  }
+
+  void _updateTemperature(double value) {
+    onConfigChanged(config.copyWith(temperature: value));
+    _sendMessage(config.copyWith(temperature: value));
+  }
+
+  void _updateHumidity(double value) {
+    onConfigChanged(config.copyWith(humidity: value));
+    _sendMessage(config.copyWith(humidity: value));
+  }
+
+  void _updateStaticMode(bool value) {
+    onConfigChanged(config.copyWith(staticMode: value));
+    _sendMessage(config.copyWith(staticMode: value));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -194,7 +242,25 @@ class WallpaperControlPanel extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
+
+          // 静态Canvas模式开关
+          SwitchListTile.adaptive(
+            value: config.staticMode,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('静态Canvas模式'),
+            subtitle: Text(
+              config.staticMode
+                  ? '已启用：DOM预渲染为单帧Canvas，GPU开销极低'
+                  : '已关闭：实时CSS渲染，参数调整更直观',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: const Color(0xFF94A1B6),
+              ),
+            ),
+            onChanged: _updateStaticMode,
+          ),
+          const Divider(color: Color(0xFF293649), height: 1),
+          const SizedBox(height: 12),
 
           // 流动速度
           _SliderRow(
@@ -290,6 +356,73 @@ class WallpaperControlPanel extends StatelessWidget {
               ],
             ),
           ],
+
+          // 天气模拟折叠区域
+          const SizedBox(height: 16),
+          const Divider(color: Color(0xFF293649), height: 1),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(Icons.cloud_rounded, color: const Color(0xFF94A1B6), size: 18),
+              const SizedBox(width: 8),
+              Text(
+                '天气模拟',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFFAEB7C5),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Text(
+                '天气条件',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFFAEB7C5),
+                ),
+              ),
+              const Spacer(),
+              DropdownButton<String>(
+                value: config.weatherCondition ?? 'sunny',
+                dropdownColor: const Color(0xFF182230),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.white,
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'sunny', child: Text('☀️ 晴')),
+                  DropdownMenuItem(value: 'cloudy', child: Text('☁️ 多云')),
+                  DropdownMenuItem(value: 'rain', child: Text('🌧️ 雨')),
+                  DropdownMenuItem(value: 'snow', child: Text('❄️ 雪')),
+                  DropdownMenuItem(value: 'fog', child: Text('🌫️ 雾')),
+                ],
+                onChanged: (v) {
+                  if (v != null) _updateWeatherCondition(v);
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _SliderRow(
+            label: '温度',
+            value: config.temperature ?? 20,
+            min: -20.0,
+            max: 45.0,
+            divisions: 65,
+            valueDisplay: '${(config.temperature ?? 20).toStringAsFixed(0)}°C',
+            onChanged: _updateTemperature,
+          ),
+          const SizedBox(height: 8),
+          _SliderRow(
+            label: '湿度',
+            value: config.humidity ?? 50,
+            min: 0.0,
+            max: 100.0,
+            divisions: 100,
+            valueDisplay: '${(config.humidity ?? 50).toStringAsFixed(0)}%',
+            onChanged: _updateHumidity,
+          ),
         ],
       ),
     );

@@ -1081,6 +1081,10 @@ class _PreviewPanelState extends State<_PreviewPanel> {
         'waveAmp': 0.7,
         'cssBlur': 0.0,
         'useRealTime': true,
+        'weatherCondition': 'sunny',
+        'temperature': 20.0,
+        'humidity': 50.0,
+        'staticMode': false,
       });
 
   SunriseConfig _sunriseConfig = const SunriseConfig();
@@ -1383,6 +1387,10 @@ class _ControlSheet extends StatelessWidget {
               useRealTime: configValue['useRealTime'] ?? true,
               simTime: configValue['simTime'],
               simMonth: configValue['simMonth'],
+              weatherCondition: configValue['weatherCondition'],
+              temperature: configValue['temperature'],
+              humidity: configValue['humidity'],
+              staticMode: configValue['staticMode'] ?? false,
             );
             return WallpaperControlPanel(
               config: config,
