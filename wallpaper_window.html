@@ -229,58 +229,6 @@
 // ===== 静态壁纸标记 =====
 window.__wallpaperStatic = true;
 
-// ===== 性能诊断日志系统 =====
-const perfLog = [];
-function logPerf(msg) {
-  const entry = `[${new Date().toISOString()}] ${msg}`;
-  perfLog.push(entry);
-  console.log('[天际流光]', entry);
-}
-
-// 检测是否有CSS动画在运行
-function checkCSSAnimations() {
-  const sheets = document.styleSheets;
-  let animCount = 0;
-  try {
-    for (const sheet of sheets) {
-      for (const rule of sheet.cssRules || []) {
-        if (rule.type === CSSRule.KEYFRAMES_RULE) animCount++;
-      }
-    }
-  } catch(e) {}
-  logPerf(`CSS keyframes 数量: ${animCount} (应为0)`);
-  return animCount;
-}
-
-// 检测是否有rAF意外运行
-let rafCheckCount = 0;
-const origRAF = window.requestAnimationFrame;
-window.requestAnimationFrame = function(cb) {
-  rafCheckCount++;
-  if (rafCheckCount <= 3) {
-    logPerf(`⚠️ requestAnimationFrame 被调用 (第${rafCheckCount}次)`);
-  }
-  return origRAF.call(window, cb);
-};
-
-// 检测合成层数量（近似）
-function countCompositingLayers() {
-  const all = document.querySelectorAll('*');
-  let layers = 0;
-  for (const el of all) {
-    const s = getComputedStyle(el);
-    if (s.position === 'fixed' || s.position === 'sticky') layers++;
-    else if (s.transform !== 'none') layers++;
-    else if (s.willChange !== 'auto') layers++;
-    else if (s.opacity !== '1') layers++;
-    else if (s.filter && s.filter !== 'none') layers++;
-    else if (s.backdropFilter && s.backdropFilter !== 'none') layers++;
-    else if (s.mixBlendMode !== 'normal') layers++;
-  }
-  logPerf(`近似合成层数量: ${layers} (目标: <20)`);
-  return layers;
-}
-
 // ===== 24小时调色板 =====
 const timePalettes = {
   night:     { top:'#050818', mid:'#080d24', bottom:'#0a0e27', horizon:'#101535',
@@ -331,10 +279,12 @@ const weatherConfigs = {
 let useRealTime = true, simTime = 12, simMonth = 5;
 let weatherCondition = 'sunny', temperature = 20, humidity = 50;
 let currentPeriod = '';
-let applyCount = 0;
 const root = document.documentElement;
 const periodNameEl = document.getElementById('periodName');
 const weatherHintEl = document.getElementById('weatherHint');
+
+// 缓存上次计算结果，避免无意义的DOM更新
+let cachedHour = -1, cachedWeather = '', cachedTemp = null, cachedHumidity = null;
 
 function hexToRgb(hex) {
   const v = parseInt(hex.slice(1), 16);
@@ -357,6 +307,16 @@ function adjustColor(hex, satMult, lightMult) {
 }
 
 function applyPeriod(hour) {
+  // 若时段、天气、温度、湿度均未显著变化，跳过更新（降低CSS计算频率）
+  const hourKey = Math.floor(hour * 10);
+  if (hourKey === cachedHour && weatherCondition === cachedWeather && temperature === cachedTemp && humidity === cachedHumidity) {
+    return;
+  }
+  cachedHour = hourKey;
+  cachedWeather = weatherCondition;
+  cachedTemp = temperature;
+  cachedHumidity = humidity;
+
   const pNames = Object.keys(timePalettes);
   const idx = pNames.indexOf(getPeriod(hour));
   const nextIdx = (idx+1)%pNames.length;
@@ -409,7 +369,6 @@ function applyPeriod(hour) {
   }
 
   currentPeriod = getPeriod(hour);
-  applyCount++;
 }
 
 let staticMode = false;
@@ -549,14 +508,12 @@ function enterStaticMode() {
   drawSceneToCanvas();
   canvas.style.display = 'block';
   document.getElementById('infoText').style.display = 'none';
-  logPerf('已进入静态Canvas模式（GPU单帧合成）');
 }
 
 function exitStaticMode() {
   staticMode = false;
   if (canvas) canvas.style.display = 'none';
   document.getElementById('infoText').style.display = 'block';
-  logPerf('已退出静态Canvas模式');
 }
 
 window.setStaticMode = function(enabled) {
@@ -589,25 +546,8 @@ window.setWallpaperConfig = function(config) {
 
 // ===== 初始化 =====
 updateTime();
-setInterval(updateTime, 60000);
-
-// ===== 延迟诊断（DOM渲染完成后）=====
-setTimeout(() => {
-  logPerf('=== 性能诊断开始 ===');
-  logPerf('__wallpaperStatic = ' + window.__wallpaperStatic);
-  checkCSSAnimations();
-  const layers = countCompositingLayers();
-  logPerf('DOM元素总数: ' + document.querySelectorAll('*').length);
-  logPerf('=== 诊断结束 ===');
-  if (layers > 25) {
-    logPerf('⚠️ 合成层过多(' + layers + ')，建议进一步简化CSS');
-  }
-}, 500);
-
-// 每10秒输出一次状态摘要
-setInterval(() => {
-  logPerf(`状态: 时段=${currentPeriod}, 天气=${weatherCondition}, 渲染次数=${applyCount}, rAF调用=${rafCheckCount}`);
-}, 10000);
+// 每5分钟检查一次时段变化（降低定时器频率）
+setInterval(updateTime, 300000);
 
 console.log('[天际流光] 已初始化');
 </script>

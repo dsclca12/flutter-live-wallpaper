@@ -14,9 +14,15 @@ void main() async {
       await WebviewController.initializeEnvironment(
         additionalArguments:
             '--disable-gpu-vsync '
-            '--disable-features=GpuProcessHighPriorityWin,SmoothScrolling '
+            '--disable-features=GpuProcessHighPriorityWin,SmoothScrolling,TranslateUI,MediaRouter,OptimizationHints,InterestFeedContentSuggestions,AutofillServerCommunication,PasswordManager '
             '--disable-smooth-scrolling '
-            '--disable-composited-antialiasing',
+            '--disable-composited-antialiasing '
+            '--disable-background-networking '
+            '--disable-background-timer-throttling '
+            '--disable-renderer-backgrounding '
+            '--enable-features=LowEndDeviceMode '
+            '--force-low-power-gpu '
+            '--max-gum-fps=5',
       );
     } catch (e) {
       // 环境可能已被初始化，忽略错误

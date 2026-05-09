@@ -1423,9 +1423,15 @@ class _WallpaperModePageState extends State<WallpaperModePage> {
   bool _isAttached = false;
   String? _errorMessage;
 
+  // 桌面壁纸模式默认启用静态Canvas，最大限度降低GPU占用
+  late final ValueNotifier<Map<String, dynamic>> _configNotifier;
+
   @override
   void initState() {
     super.initState();
+    _configNotifier = ValueNotifier<Map<String, dynamic>>({
+      'staticMode': true,
+    });
     unawaited(_enterWallpaperMode());
     _attachedStatePoller = Timer.periodic(
       const Duration(seconds: 1),
@@ -1483,6 +1489,7 @@ class _WallpaperModePageState extends State<WallpaperModePage> {
   @override
   void dispose() {
     _attachedStatePoller?.cancel();
+    _configNotifier.dispose();
     if (_isAttached) {
       unawaited(DesktopWallpaperBridge.detachFromDesktop());
     }
@@ -1497,7 +1504,10 @@ class _WallpaperModePageState extends State<WallpaperModePage> {
       body: Stack(
         children: [
           Positioned.fill(
-            child: WallpaperPreview(wallpaper: widget.wallpaper),
+            child: WallpaperPreview(
+              wallpaper: widget.wallpaper,
+              configNotifier: _configNotifier,
+            ),
           ),
           if (showOverlay)
             Positioned(
