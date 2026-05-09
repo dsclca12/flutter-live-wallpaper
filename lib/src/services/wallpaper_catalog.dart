@@ -15,7 +15,7 @@ class WallpaperCatalog {
     ('wallpaper2.html', 'Fluid Time', '更偏暗色和信息面板风格，适合做实验性动态壁纸。'),
     ('wallpaper3.html', '晨曦流光', '随日出日落变化的动态天空，支持性能调节。'),
     ('wallpaper_time.html', '时光流转', '根据时间自动变换色调， subtle 不干扰工作。'),
-    ('wallpaper_window.html', '窗景时光', '模拟窗外自然光景，随一天24小时与天气变化天空色调，宁静不打扰。'),
+    ('wallpaper_window.html', '天际流光', '随一天24小时与天气变化的天空光景，宁静不打扰，支持静态Canvas模式。'),
   ];
 
   /// 支持的图片扩展名

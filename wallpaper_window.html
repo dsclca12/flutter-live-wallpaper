@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>窗景时光</title>
+<title>天际流光</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -16,7 +16,6 @@
     --cloud-opacity: 0; --rain-opacity: 0; --snow-opacity: 0;
     --fog-opacity: 0; --frost-opacity: 0; --heat-opacity: 0;
     --weather-overlay-opacity: 0; --weather-overlay-color: #888;
-    --glass-reflect: rgba(255,255,255,0.08);
     /* 性能：所有过渡统一2.5秒 */
     --transition-speed: 2.5s;
   }
@@ -164,51 +163,7 @@
     /* mix-blend-mode已移除 — 会导致WebView持续GPU合成 */
   }
 
-  /* ===== 玻璃层（纯CSS渐变，无backdrop-filter） ===== */
-  .glass-pane {
-    position: absolute; inset: 0;
-    z-index: 13; pointer-events: none;
-    background:
-      linear-gradient(135deg, rgba(255,255,255,0.06) 0%, transparent 35%, transparent 65%, rgba(255,255,255,0.04) 100%),
-      linear-gradient(180deg, var(--glass-reflect) 0%, transparent 15%, transparent 85%, rgba(255,255,255,0.02) 100%);
-    border: 1px solid rgba(255,255,255,0.04);
-    box-shadow: inset 0 0 60px rgba(255,255,255,0.02);
-    transition: background var(--transition-speed) ease;
-  }
 
-  /* ===== 拟态窗框（简化box-shadow数量） ===== */
-  .window-frame {
-    position: absolute; inset: 0;
-    z-index: 20; pointer-events: none;
-    border: 28px solid transparent;
-    box-shadow:
-      inset 0 0 0 1px rgba(255,255,255,0.06),
-      inset 0 0 0 2px rgba(0,0,0,0.3),
-      inset 8px 8px 16px rgba(0,0,0,0.45),
-      inset -4px -4px 12px rgba(255,255,255,0.04),
-      0 0 0 1px rgba(0,0,0,0.4),
-      0 12px 40px rgba(0,0,0,0.5);
-  }
-  .window-frame::before {
-    content: ''; position: absolute; top: 0; left: 50%;
-    width: 12px; height: 100%; margin-left: -6px;
-    background: linear-gradient(90deg, rgba(0,0,0,0.35) 0%, rgba(20,20,25,0.8) 20%, rgba(40,42,48,0.9) 50%, rgba(20,20,25,0.8) 80%, rgba(0,0,0,0.35) 100%);
-    box-shadow: inset 2px 0 4px rgba(0,0,0,0.5), inset -1px 0 2px rgba(255,255,255,0.04), 2px 0 6px rgba(0,0,0,0.3);
-  }
-  .window-frame::after {
-    content: ''; position: absolute; top: 50%; left: 0;
-    width: 100%; height: 12px; margin-top: -6px;
-    background: linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(20,20,25,0.8) 20%, rgba(40,42,48,0.9) 50%, rgba(20,20,25,0.8) 80%, rgba(0,0,0,0.35) 100%);
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.5), inset 0 -1px 2px rgba(255,255,255,0.04), 0 2px 6px rgba(0,0,0,0.3);
-  }
-
-  /* ===== 窗台 ===== */
-  .windowsill {
-    position: absolute; bottom: 0; left: 0; right: 0;
-    height: 32px; z-index: 21; pointer-events: none;
-    background: linear-gradient(180deg, rgba(30,32,38,0.95) 0%, rgba(22,24,30,0.98) 50%, rgba(15,17,22,1) 100%);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 -2px 8px rgba(0,0,0,0.4);
-  }
 
   /* ===== 信息文字 ===== */
   .info-text {
@@ -257,12 +212,6 @@
   <div class="heat-layer"></div>
   <div class="weather-overlay"></div>
 
-  <!-- z-index 13: 玻璃 -->
-  <div class="glass-pane"></div>
-
-  <!-- z-index 20-21: 窗框 -->
-  <div class="window-frame"></div>
-  <div class="windowsill"></div>
 </div>
 
 <!-- 静态Canvas模式（GPU零开销） -->
@@ -285,7 +234,7 @@ const perfLog = [];
 function logPerf(msg) {
   const entry = `[${new Date().toISOString()}] ${msg}`;
   perfLog.push(entry);
-  console.log('[窗景时光]', entry);
+  console.log('[天际流光]', entry);
 }
 
 // 检测是否有CSS动画在运行
@@ -584,29 +533,7 @@ function drawSceneToCanvas() {
     ctx.globalAlpha = 1;
   }
 
-  // 6. 窗框（十字分隔）
-  const frameW = Math.min(w, h) * 0.025;
-  ctx.fillStyle = 'rgba(30,32,38,0.95)';
-  ctx.fillRect(0, 0, w, frameW); // 上
-  ctx.fillRect(0, h-frameW, w, frameW); // 下
-  ctx.fillRect(0, 0, frameW, h); // 左
-  ctx.fillRect(w-frameW, 0, frameW, h); // 右
-  // 十字
-  ctx.fillStyle = 'rgba(20,20,25,0.9)';
-  ctx.fillRect(w/2 - frameW*0.25, 0, frameW*0.5, h);
-  ctx.fillRect(0, h/2 - frameW*0.25, w, frameW*0.5);
-  // 窗台
-  const sillH = 32;
-  ctx.fillStyle = 'rgba(15,17,22,1)';
-  ctx.fillRect(0, h-sillH, w, sillH);
-
-  // 7. 玻璃反光（简化为渐变覆盖）
-  const gg = ctx.createLinearGradient(0, 0, w, h);
-  gg.addColorStop(0, 'rgba(255,255,255,0.06)'); gg.addColorStop(0.35, 'transparent');
-  gg.addColorStop(0.65, 'transparent'); gg.addColorStop(1, 'rgba(255,255,255,0.03)');
-  ctx.fillStyle = gg; ctx.fillRect(frameW, frameW, w-frameW*2, h-frameW-sillH);
-
-  // 8. 信息文字
+  // 6. 信息文字
   ctx.font = '500 14px "Segoe UI", system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.fillStyle = 'rgba(255,255,255,0.6)';
@@ -682,7 +609,7 @@ setInterval(() => {
   logPerf(`状态: 时段=${currentPeriod}, 天气=${weatherCondition}, 渲染次数=${applyCount}, rAF调用=${rafCheckCount}`);
 }, 10000);
 
-console.log('[窗景时光] 已初始化');
+console.log('[天际流光] 已初始化');
 </script>
 </body>
 </html>
