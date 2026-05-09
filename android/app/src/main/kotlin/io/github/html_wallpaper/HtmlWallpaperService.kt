@@ -39,6 +39,15 @@ class HtmlWallpaperService : WallpaperService() {
     companion object {
         // Keep polling infrequent for battery, but avoid very stale colors.
         private const val colorRefreshIntervalMillis = 120_000L
+
+        // 静态壁纸大幅降低刷新频率以节省内存与电量
+        private const val ANIM_FRAME_INTERVAL_MS = 33L          // ~30fps 用于动态壁纸
+        private const val STATIC_FRAME_INTERVAL_MS = 5000L      // 5s 用于静态壁纸
+        private const val SYSTEM_INFO_INTERVAL_MS = 15000L      // 15s 默认系统信息
+        private const val STATIC_SYSTEM_INFO_INTERVAL_MS = 60000L // 60s 静态壁纸系统信息
+        private const val COLOR_REFRESH_INTERVAL_MS = 120_000L  // 2min 动态色彩
+        private const val STATIC_COLOR_REFRESH_INTERVAL_MS = 300_000L // 5min 静态色彩
+
         @Volatile
         private var reloadGeneration = 0L
         @Volatile
@@ -130,6 +139,8 @@ class HtmlWallpaperService : WallpaperService() {
         private var lastPaletteSignature: String? = null
         private var renderScaleEnabled = false
         private var renderScale = 1.0f
+        // 是否检测到静态壁纸标记（HTML内含 window.__wallpaperStatic）
+        private var isStaticWallpaper = false
 
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
@@ -155,17 +166,19 @@ class HtmlWallpaperService : WallpaperService() {
 
                 settings.apply {
                     javaScriptEnabled = true
-                    domStorageEnabled = true
+                    domStorageEnabled = false     // 壁纸不需要 DOM Storage，禁用可减少内存
+                    databaseEnabled = false       // 禁用 Web SQL
                     allowFileAccess = true
                     allowContentAccess = true
                     loadsImagesAutomatically = true
                     mediaPlaybackRequiresUserGesture = false
-                    cacheMode = WebSettings.LOAD_DEFAULT
+                    cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         safeBrowsingEnabled = false
                     }
+                    // 壁纸无滚动场景，offscreenPreRaster 徒增内存，仅在非静态时开启
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        offscreenPreRaster = true
+                        offscreenPreRaster = false
                     }
                     @Suppress("DEPRECATION")
                     allowFileAccessFromFileURLs = true
@@ -178,6 +191,8 @@ class HtmlWallpaperService : WallpaperService() {
                     override fun onPageFinished(view: WebView?, url: String?) {
                         loadedWallpaperVersion = loadingWallpaperVersion
                         pageLoaded = true
+                        // 检测静态壁纸标记
+                        detectStaticWallpaper()
                         resizeWebView()
                         renderFrame()
                         refreshWallpaperColors(forceNotify = true)
@@ -194,6 +209,12 @@ class HtmlWallpaperService : WallpaperService() {
             handledColorRefreshGeneration = currentColorRefreshGeneration()
             applyRenderConfigFromPreferences(force = true)
             syncWallpaper(forceReload = true)
+        }
+
+        private fun detectStaticWallpaper() {
+            val html = HtmlWallpaperStorage.load(this@HtmlWallpaperService).html
+            isStaticWallpaper = html.contains("__wallpaperStatic") ||
+                                html.contains("window.__wallpaperStatic")
         }
 
         private fun syncWallpaperIfRequested() {
@@ -378,7 +399,8 @@ class HtmlWallpaperService : WallpaperService() {
                 return
             }
             mainHandler.removeCallbacks(renderTicker)
-            mainHandler.postDelayed(renderTicker, 33L)
+            val interval = if (isStaticWallpaper) STATIC_FRAME_INTERVAL_MS else ANIM_FRAME_INTERVAL_MS
+            mainHandler.postDelayed(renderTicker, interval)
         }
 
         private fun scheduleColorRefresh(immediate: Boolean = false) {
@@ -386,10 +408,11 @@ class HtmlWallpaperService : WallpaperService() {
             if (!isVisible || !isDynamicColorsEnabled()) {
                 return
             }
+            val interval = if (isStaticWallpaper) STATIC_COLOR_REFRESH_INTERVAL_MS else COLOR_REFRESH_INTERVAL_MS
             if (immediate) {
                 mainHandler.post(colorTicker)
             } else {
-                mainHandler.postDelayed(colorTicker, colorRefreshIntervalMillis)
+                mainHandler.postDelayed(colorTicker, interval)
             }
         }
 
@@ -534,8 +557,10 @@ class HtmlWallpaperService : WallpaperService() {
         private fun scheduleSystemInfoRefresh(immediate: Boolean = false) {
             mainHandler.removeCallbacks(systemInfoTicker)
             if (!isVisible) return
-            // 5 秒更新一次
-            val delay = if (immediate) 0L else 5000L
+            // 静态壁纸大幅降低推送频率，减少 JS 执行与内存波动
+            val delay = if (immediate) 0L else (
+                if (isStaticWallpaper) STATIC_SYSTEM_INFO_INTERVAL_MS else SYSTEM_INFO_INTERVAL_MS
+            )
             mainHandler.postDelayed(systemInfoTicker, delay)
         }
         

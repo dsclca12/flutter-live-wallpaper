@@ -41,38 +41,17 @@
     pointer-events: none; z-index: 2;
   }
 
-  /* ===== 星辰（静态CSS点阵，无动画） ===== */
+  /* ===== 星辰（静态CSS点阵，无动画） =====
+     使用单张 SVG data URI 替代 25 条 radial-gradient，
+     减少渲染时的纹理开销与内存占用（尤其 Android WebView）。
+   */
   .stars {
     position: absolute; inset: 0;
     opacity: var(--stars-opacity);
     transition: opacity var(--transition-speed) ease;
     pointer-events: none; z-index: 3;
-    background-image:
-      radial-gradient(1.5px 1.5px at 12% 15%, rgba(255,255,255,0.9), transparent),
-      radial-gradient(1px 1px at 25% 8%, rgba(255,255,255,0.7), transparent),
-      radial-gradient(1.5px 1.5px at 38% 22%, rgba(255,255,255,0.85), transparent),
-      radial-gradient(1px 1px at 48% 12%, rgba(255,255,255,0.6), transparent),
-      radial-gradient(1.5px 1.5px at 58% 28%, rgba(255,255,255,0.8), transparent),
-      radial-gradient(1px 1px at 68% 10%, rgba(255,255,255,0.7), transparent),
-      radial-gradient(1.5px 1.5px at 78% 20%, rgba(255,255,255,0.9), transparent),
-      radial-gradient(1px 1px at 85% 14%, rgba(255,255,255,0.65), transparent),
-      radial-gradient(1.5px 1.5px at 92% 25%, rgba(255,255,255,0.8), transparent),
-      radial-gradient(1px 1px at 8% 35%, rgba(255,255,255,0.5), transparent),
-      radial-gradient(1.5px 1.5px at 18% 42%, rgba(255,255,255,0.75), transparent),
-      radial-gradient(1px 1px at 32% 38%, rgba(255,255,255,0.6), transparent),
-      radial-gradient(1.5px 1.5px at 45% 48%, rgba(255,255,255,0.85), transparent),
-      radial-gradient(1px 1px at 55% 40%, rgba(255,255,255,0.55), transparent),
-      radial-gradient(1.5px 1.5px at 65% 52%, rgba(255,255,255,0.7), transparent),
-      radial-gradient(1px 1px at 72% 38%, rgba(255,255,255,0.5), transparent),
-      radial-gradient(1.5px 1.5px at 82% 45%, rgba(255,255,255,0.8), transparent),
-      radial-gradient(1px 1px at 90% 50%, rgba(255,255,255,0.6), transparent),
-      radial-gradient(2px 2px at 15% 60%, rgba(255,255,255,0.9), transparent),
-      radial-gradient(1.5px 1.5px at 28% 68%, rgba(255,255,255,0.7), transparent),
-      radial-gradient(1px 1px at 42% 62%, rgba(255,255,255,0.55), transparent),
-      radial-gradient(1.5px 1.5px at 52% 72%, rgba(255,255,255,0.75), transparent),
-      radial-gradient(1px 1px at 62% 65%, rgba(255,255,255,0.5), transparent),
-      radial-gradient(1.5px 1.5px at 75% 70%, rgba(255,255,255,0.8), transparent),
-      radial-gradient(1px 1px at 88% 62%, rgba(255,255,255,0.6), transparent);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cg fill='%23fff'%3E%3Ccircle cx='12' cy='15' r='0.75' opacity='0.9'/%3E%3Ccircle cx='25' cy='8' r='0.5' opacity='0.7'/%3E%3Ccircle cx='38' cy='22' r='0.75' opacity='0.85'/%3E%3Ccircle cx='48' cy='12' r='0.5' opacity='0.6'/%3E%3Ccircle cx='58' cy='28' r='0.75' opacity='0.8'/%3E%3Ccircle cx='68' cy='10' r='0.5' opacity='0.7'/%3E%3Ccircle cx='78' cy='20' r='0.75' opacity='0.9'/%3E%3Ccircle cx='85' cy='14' r='0.5' opacity='0.65'/%3E%3Ccircle cx='92' cy='25' r='0.75' opacity='0.8'/%3E%3Ccircle cx='8' cy='35' r='0.5' opacity='0.5'/%3E%3Ccircle cx='18' cy='42' r='0.75' opacity='0.75'/%3E%3Ccircle cx='32' cy='38' r='0.5' opacity='0.6'/%3E%3Ccircle cx='45' cy='48' r='0.75' opacity='0.85'/%3E%3Ccircle cx='55' cy='40' r='0.5' opacity='0.55'/%3E%3Ccircle cx='65' cy='52' r='0.75' opacity='0.7'/%3E%3Ccircle cx='72' cy='38' r='0.5' opacity='0.5'/%3E%3Ccircle cx='82' cy='45' r='0.75' opacity='0.8'/%3E%3Ccircle cx='90' cy='50' r='0.5' opacity='0.6'/%3E%3Ccircle cx='15' cy='60' r='1' opacity='0.9'/%3E%3Ccircle cx='28' cy='68' r='0.75' opacity='0.7'/%3E%3Ccircle cx='42' cy='62' r='0.5' opacity='0.55'/%3E%3Ccircle cx='52' cy='72' r='0.75' opacity='0.75'/%3E%3Ccircle cx='62' cy='65' r='0.5' opacity='0.5'/%3E%3Ccircle cx='75' cy='70' r='0.75' opacity='0.8'/%3E%3Ccircle cx='88' cy='62' r='0.5' opacity='0.6'/%3E%3C/g%3E%3C/svg%3E");
+    background-size: 100% 100%;
   }
 
   /* ===== 云层（纯CSS渐变，无filter blur） ===== */

@@ -8,13 +8,13 @@ import 'src/app.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Windows: 初始化 WebView2 环境时传入 GPU 优化参数
+  // Windows: 初始化 WebView2 环境时传入 GPU/内存 优化参数
   if (Platform.isWindows) {
     try {
       await WebviewController.initializeEnvironment(
         additionalArguments:
             '--disable-gpu-vsync '
-            '--disable-features=GpuProcessHighPriorityWin,SmoothScrolling,TranslateUI,MediaRouter,OptimizationHints,InterestFeedContentSuggestions,AutofillServerCommunication,PasswordManager '
+            '--disable-features=GpuProcessHighPriorityWin,SmoothScrolling,TranslateUI,MediaRouter,OptimizationHints,InterestFeedContentSuggestions,AutofillServerCommunication,PasswordManager,CanvasOopRasterization,SkiaGraphite '
             '--disable-smooth-scrolling '
             '--disable-composited-antialiasing '
             '--disable-background-networking '
@@ -22,7 +22,14 @@ void main() async {
             '--disable-renderer-backgrounding '
             '--enable-features=LowEndDeviceMode '
             '--force-low-power-gpu '
-            '--max-gum-fps=5',
+            '--max-gum-fps=5 '
+            '--js-flags=--max-old-space-size=48,--optimize-for-size '
+            '--renderer-process-limit=1 '
+            '--memory-model=low '
+            '--disable-dev-shm-usage '
+            '--max-web-media-player-count=0 '
+            '--disable-features=VizDisplayCompositor,SiteIsolationForPasswordSites '
+            '--enable-features=MemorySaverModeQuick',
       );
     } catch (e) {
       // 环境可能已被初始化，忽略错误

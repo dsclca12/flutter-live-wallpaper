@@ -41,7 +41,8 @@ object AndroidWallpaperPreferences {
 
     fun getRenderConfig(context: Context): AndroidRenderConfig {
         val preferences = context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
-        val enabled = preferences.getBoolean(renderScaleEnabledKey, false)
+        // 默认开启渲染缩放，以显著降低 RAM 占用（静态壁纸尤为明显）
+        val enabled = preferences.getBoolean(renderScaleEnabledKey, true)
         val scale = preferences.getFloat(renderScaleValueKey, defaultRenderScale)
             .coerceIn(0.25f, 1.0f)
         return AndroidRenderConfig(
